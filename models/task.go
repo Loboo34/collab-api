@@ -1,0 +1,17 @@
+package models
+
+import (
+	"time"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+type Task struct{
+	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Title string `bson:"title" json:"title"`
+	Description string `bson:"description" json:"descroption"`
+	Status string `bson:"status" json:"status"`//pending, inProgress,done
+	AssignedTo string `bson:"assigned" json:"assigned"`//id of the team member the task is assinged to
+	TeamId string `bson:"teamid" json:"teamid"`
+	ProjectId string `bson:"projectId,omitempty" json:"projectid"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdat"`
+}
