@@ -12,5 +12,4 @@ type Project struct{
 	TeamId string `bson:"teamid" json:"teamid"`
 	CreatedBy string `bson:"createdBy" json:"createdBy"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdat"`
-
 }

@@ -11,4 +11,5 @@ type Team struct{
 	Name string `bson:"name" json:"name"`
 	Members []string `bson:"members" json:"members"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	CreatedBy string  `bson:"createdby" json:"createdby"`
 }

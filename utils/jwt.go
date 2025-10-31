@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"github.com/Loboo34/collab-api/models"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
@@ -8,6 +9,7 @@ import (
 	"time"
 )
 
+var user models.User
 var JwtSecret = os.Getenv("JWT_SECRET")
 var jwtKey = []byte(JwtSecret)
 
@@ -24,7 +26,8 @@ func ComparePassword(password string, hash string) bool {
 
 func GenerateJWT(email string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"email": email,
+		"is": user.ID,
+		"email": user.Email,
 		"exp":   time.Now().Add(time.Hour * 24).Unix(),
 	})
 
