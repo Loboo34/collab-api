@@ -40,5 +40,5 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "Successfully added project"})
+	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Successfully added project"})
 }

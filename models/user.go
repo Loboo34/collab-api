@@ -11,6 +11,6 @@ type User struct {
 	FulllName string    `bson:"fullname" json:"fullname"`
 	Email     string    `bson:"email" json:"email"`
 	Password  string    `bson:"password,omitempty" json:"password,omitempty"`
-	Teams     []string  `bson:"teams" json:"teams"`
+	Teams     []primitive.ObjectID  `bson:"teams" json:"teams"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 }

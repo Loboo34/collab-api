@@ -97,5 +97,5 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "Update successful"})
+	utils.RespondWithJSON(w, http.StatusCreated,"", map[string]string{"message": "Update successful"})
 }

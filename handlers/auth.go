@@ -46,7 +46,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "User registered Successfuly"})
+	utils.RespondWithJSON(w, http.StatusCreated,"Regestration successfull", map[string]string{"message": "User registered Successfuly"})
 
 }
 
@@ -86,7 +86,7 @@ if err != nil{
 	utils.RespondWithError(w, http.StatusInternalServerError, "Failed to login", "")
 }
 
-utils.RespondWithJSON(w, http.StatusOK, map[string]string{"token": token})
+utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]string{"token": token})
 
 
 }

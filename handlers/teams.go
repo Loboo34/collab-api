@@ -4,18 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
 	"github.com/Loboo34/collab-api/utils"
-	"github.com/golang-jwt/jwt/v5"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
-
-var jwtKey = os.Getenv("JWT_SECRET")
 
 func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -31,17 +28,9 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(jwtKey), nil
-	})
+	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User id not found", "")
 		return
 	}
 
@@ -54,25 +43,94 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	var team models.Team
 	if err = json.NewDecoder(r.Body).Decode(&team); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json", "")
+		return
 	}
 	team.ID = primitive.NewObjectID()
 	team.CreatedBy = userID
+	team.Members = []string{userID}
+	team.CreatedAt = time.Now()
 
-	var admin models.TeamMember
-	admin.User = userID
-	admin.Role = "Admin"
+	teamCollection := database.DB.Collection("teams")
 
-	collection := database.DB.Collection("teams")
+	var members models.TeamMember
+	members.TeamId = team.ID
+	members.User = userID
+	members.Role = "Admin"
+	members.JoinedAt = time.Now()
+
+	membersCollection := database.DB.Collection("team-members")
+
+	//var user models.User
+	//user.Teams = team.ID
+
+	userCollection := database.DB.Collection("users")
+	userObjID, _ := primitive.ObjectIDFromHex(userID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err = collection.InsertOne(ctx, team)
+	_, err = teamCollection.InsertOne(ctx, team)
 	if err != nil {
 		utils.Logger.Warn("Failed to Create team")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error creating Team", "")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "Created Team successfully"})
+	_, err = membersCollection.InsertOne(ctx, members)
+	if err != nil {
+		utils.Logger.Warn("Failed to create team admin")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error saving admin", "")
+	}
+
+	_, err = userCollection.UpdateOne(ctx, bson.M{"_id": userObjID}, bson.M{"$addToSet": bson.M{"teams": team.ID}})
+
+	utils.RespondWithJSON(w, http.StatusCreated, "Team created Successfully", map[string]interface{}{"team_id": team.ID.Hex(),
+		"name": team.Name})
+}
+
+func InviteMember(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorizarion")
+	if tokenString == ""{
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
+	}
+
+	userId, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "user ID not found", "")
+		return
+	}
+
+	userRole, ok := claims["role"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "User role not found", "")
+		return
+	}
+
+
+	isAdmin, err := strings.EqualFold(userRole, "Admin")
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "User is not admin", "")
+		return
+	}
+
+	var user models.User
+	if err = json.NewDecoder(r.Body).Decode(&user); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "INvalid json format","")
+		return
+	}
+
+	
 }

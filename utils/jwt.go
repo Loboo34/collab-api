@@ -10,6 +10,7 @@ import (
 )
 
 var user models.User
+var team models.TeamMember
 var JwtSecret = os.Getenv("JWT_SECRET")
 var jwtKey = []byte(JwtSecret)
 
@@ -28,6 +29,7 @@ func GenerateJWT(email string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"is": user.ID,
 		"email": user.Email,
+		"role": team.Role,
 		"exp":   time.Now().Add(time.Hour * 24).Unix(),
 	})
 

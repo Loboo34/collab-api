@@ -14,13 +14,13 @@ type ApiResponse struct{
 }
 
 
-func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}){
+func RespondWithJSON(w http.ResponseWriter, code int, message string, payload interface{}){
 	
 
 	response := ApiResponse{
 		Sucess: true,
+		Message: message,
 		Data: payload,
-		//Data: details,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

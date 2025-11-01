@@ -7,8 +7,8 @@ import (
 
 type TeamMember struct {
 	ID        primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
-	TeamId string `bson:"teamId" json:"teamId"`
+	TeamId primitive.ObjectID `bson:"teamId" json:"teamId"`
 	User string `bson:"user" json:"user"`
 	Role      string    `bson:"role" json:"role"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	JoinedAt time.Time `bson:"joinedat" json:"joinedat"`
 }
