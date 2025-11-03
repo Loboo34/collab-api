@@ -163,7 +163,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 
 	teamCollection := database.DB.Collection("teams")
 	var team models.Team
-	err = teamCollection.FindOne(ctx, bson.M{"team": teamObjId}).Decode(&team)
+	err = teamCollection.FindOne(ctx, bson.M{"_id": teamObjId}).Decode(&team)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
