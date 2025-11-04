@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -21,6 +22,37 @@ func AddTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenstring := r.Header.Get("Authorization")
+	if tokenstring == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "missing Auth token", "")
+		return
+	}
+	tokenstring = strings.TrimPrefix(tokenstring, "Bearer ")
+
+	claims, err := utils.ValidateJWT(tokenstring)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
+		return
+	}
+
+	userId, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusNotFound, "User id not found", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var team models.Team
+	teamCollection := database.DB.Collection("teams")
+	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
+
+	var project models.Project
+	projectCollection := database.DB.Collection("projects")
+
+	err = projectCollection.FindOne(ctx, bson.M{"_id": project.ID}).Decode(&project)
+
 	var task models.Task
 	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Json format", "")
@@ -29,13 +61,12 @@ func AddTask(w http.ResponseWriter, r *http.Request) {
 
 	task.ID = primitive.NewObjectID()
 	task.CreatedAt = time.Now()
+	task.TeamId = team.ID
+	task.ProjectId = project.ID
 
-	collection := database.DB.Collection("tasks")
+	taskCollection := database.DB.Collection("tasks")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := collection.InsertOne(ctx, task)
+	_, err = taskCollection.InsertOne(ctx, task)
 	if err != nil {
 		utils.Logger.Warn("Failed to Add Task")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error adding task", "")
@@ -97,5 +128,5 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated,"", map[string]string{"message": "Update successful"})
+	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Update successful"})
 }

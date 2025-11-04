@@ -11,7 +11,7 @@ type Task struct{
 	Description string `bson:"description" json:"descroption"`
 	Status string `bson:"status" json:"status"`//pending, inProgress,done
 	AssignedTo string `bson:"assigned" json:"assigned"`//id of the team member the task is assinged to
-	TeamId string `bson:"teamid" json:"teamid"`
-	ProjectId string `bson:"projectId,omitempty" json:"projectid"`
+	TeamId primitive.ObjectID `bson:"teamid" json:"teamid"`
+	ProjectId primitive.ObjectID `bson:"projectId,omitempty" json:"projectid"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdat"`
 }
