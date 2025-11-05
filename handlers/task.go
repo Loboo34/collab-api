@@ -72,6 +72,8 @@ func AddTask(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error adding task", "")
 		return
 	}
+
+	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userId})
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
