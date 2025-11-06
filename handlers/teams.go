@@ -191,46 +191,44 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	inviteCollection := database.DB.Collection("invites")
-	_,err = inviteCollection.InsertOne(ctx, invite) 
+	_, err = inviteCollection.InsertOne(ctx, invite)
 	if err != nil {
 		utils.Logger.Warn("Failed to create invite")
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error creating invite","")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error creating invite", "")
 	}
 
-	inviteLink := "http://localhost:3000/invite/accept?token="+ inviteToken
+	inviteLink := "http://localhost:3000/invite/accept?token=" + inviteToken
 
 	if err := utils.SendInviteEmail(user.Email, inviteLink); err != nil {
 		utils.Logger.Warn("Failed to send email")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Erreor sending email", "")
 	}
 
-
-
 	utils.RespondWithJSON(w, http.StatusCreated, "Invitation sent successfully", map[string]interface{}{"user": user.ID})
 }
 
-func AcceptInvite(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodPost{
+func AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	if tokenString == ""{
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "") 
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
 		return
 	}
 
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	claims,err := utils.ValidateJWT(tokenString)
+	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "invalid JWT", "")
 		return
 	}
 
 	userID, ok := claims["id"].(string)
-	if !ok{
+	if !ok {
 		utils.RespondWithError(w, http.StatusNotFound, "Missing Id", "")
 		return
 	}
@@ -240,37 +238,35 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request){
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-
 	inviteCollection := database.DB.Collection("invites")
 	var invite models.Invite
 	err = inviteCollection.FindOne(ctx, bson.M{"token": invite.Token}).Decode(&invite)
 
 	membersCollection := database.DB.Collection("team-members")
-_,err = membersCollection.UpdateOne(ctx, bson.M{"_id": invite.TeamID}, bson.M{"$addToSet": bson.M{"teamMembers": id }},)
-if err != nil {
-	utils.Logger.Warn("Failed to Add user to team")
-	utils.RespondWithError(w, http.StatusInternalServerError, "Error adding member to team","")
-	return
+	_, err = membersCollection.UpdateOne(ctx, bson.M{"_id": invite.TeamID}, bson.M{"$addToSet": bson.M{"teamMembers": id}})
+	if err != nil {
+		utils.Logger.Warn("Failed to Add user to team")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error adding member to team", "")
+		return
+	}
+
+	_, err = inviteCollection.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "accepted"}})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error changing invite status", "")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, "Invite Accepted", map[string]interface{}{"user": id})
 }
 
-_, err = inviteCollection.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "accepted"}})
-if err != nil {
-	utils.RespondWithError(w, http.StatusInternalServerError, "Error changing invite status", "")
-	return
-}
-
-utils.RespondWithJSON(w, http.StatusOK, "Invite Accepted", map[string]interface{}{"user": id})
-}
-
-
-func DeclineInvite(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodPost{
+func DeclineInvite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowe", "")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	if tokenString == ""{
+	if tokenString == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
 		return
 	}
@@ -284,12 +280,12 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request){
 	}
 
 	userID, ok := claims["id"].(string)
-	if !ok{
+	if !ok {
 		utils.RespondWithError(w, http.StatusNotFound, "Id Not found", "")
 		return
 	}
 
-	id,_ := primitive.ObjectIDFromHex(userID)
+	id, _ := primitive.ObjectIDFromHex(userID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -297,13 +293,66 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request){
 	inviteCollectioon := database.DB.Collection("invites")
 	var invite models.Invite
 
-	_,err = inviteCollectioon.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "declined"}})
+	_, err = inviteCollectioon.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "declined"}})
 	if err != nil {
 		utils.Logger.Warn("Failed to decline Invitation")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error declinign invitation", "")
 		return
 	}
 
-
 	utils.RespondWithJSON(w, http.StatusOK, "Invite declined", map[string]interface{}{"user": id})
+}
+
+func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Get Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusNotFound, "Missing Auth token", "")
+		return
+	}
+
+	teamCollection := database.DB.Collection("teams")
+	var team models.Team
+
+	membersCollection := database.DB.Collection("team-members")
+	var members []models.TeamMember
+
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
+	if err != nil{
+		utils.RespondWithError(w, http.StatusBadRequest, "Error getting team id", "")
+		return
+	}
+
+	cursor, err := membersCollection.Find(ctx, bson.M{})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching ", "")
+		return
+	}
+
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var member models.TeamMember
+		if err := cursor.Decode(&member); err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching ", "")
+			return
+		}
+		members = append(members, member)
+	}
+
+	if err = cursor.Err(); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
+		return
+	}
+
+	utils.Logger.Info("Fetched All team members")
+	utils.RespondWithJSON(w, http.StatusOK, "", map[string]interface{}{"members": members})
 }
