@@ -321,12 +321,11 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	membersCollection := database.DB.Collection("team-members")
 	var members []models.TeamMember
 
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	err := teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
-	if err != nil{
+	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Error getting team id", "")
 		return
 	}
@@ -355,4 +354,64 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 
 	utils.Logger.Info("Fetched All team members")
 	utils.RespondWithJSON(w, http.StatusOK, "", map[string]interface{}{"members": members})
+}
+
+func DeleteTeam(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusNotFound, "Missing Auth token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
+		return
+	}
+
+	userID, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing role", "")
+		return
+	}
+
+	if !strings.EqualFold(role, "Admin") {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin can Perform Action", "")
+		return
+	}
+
+	var team models.Team
+	teamCollection := database.DB.Collection("teams")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	//teamID, err := primitive.ObjectIDFromHex(team.ID)
+
+	result, err := teamCollection.DeleteOne(ctx, bson.M{"_id": team.ID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete Team", "")
+		return
+	}
+
+	if result.DeletedCount == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "Team Not found", "")
+		return
+	}
+
+	utils.Logger.Info("Deleted Team")
+	utils.RespondWithJSON(w, http.StatusOK, "Team successfuly deleted", map[string]interface{}{"Team deleted by": userID, "team": team})
 }

@@ -54,10 +54,8 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-
 	var team models.Team
 	//teamID, err := primitive.ObjectIDFromHex(team.ID)
-	
 
 	teamCollection := database.DB.Collection("teams")
 	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
@@ -78,16 +76,45 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	project.CreatedAt = time.Now()
 	projectCollection := database.DB.Collection("projects")
 
-	_,err = projectCollection.InsertOne(ctx, project)
+	_, err = projectCollection.InsertOne(ctx, project)
 	if err != nil {
 		utils.Logger.Warn("Failed to create project")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error creating project", "")
 		return
 	}
 
+	utils.Logger.Info("Project Created Successfuly")
+	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Successfully added project"})
+}
 
+func DeleteProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusNotFound, "Missing Auth Token", "")
+		return
+	}
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Ivalid Token", "")
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin can Perform Action", "")
+		return
+	}
+
+	if strings.EqualFold(role, "Admin"){
+		utils.RespondWithError(w, http.StatusUnauthorized, "User is not admin", "")
+		return
+	}
 
 	
-
-	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Successfully added project"})
 }
