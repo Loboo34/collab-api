@@ -16,7 +16,7 @@ import (
 	"github.com/Loboo34/collab-api/utils"
 )
 
-func AddTask(w http.ResponseWriter, r *http.Request) {
+func CreateTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
 		return
@@ -37,7 +37,7 @@ func AddTask(w http.ResponseWriter, r *http.Request) {
 
 	userId, ok := claims["id"].(string)
 	if !ok {
-		utils.RespondWithError(w, http.StatusNotFound, "User id not found", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "User id not found", "")
 		return
 	}
 
@@ -52,6 +52,10 @@ func AddTask(w http.ResponseWriter, r *http.Request) {
 	projectCollection := database.DB.Collection("projects")
 
 	err = projectCollection.FindOne(ctx, bson.M{"_id": project.ID}).Decode(&project)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error fetching project", "")
+		return
+	}
 
 	var task models.Task
 	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
@@ -132,3 +136,90 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Update successful"})
 }
+
+func AssignTo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == ""{
+		utils.RespondWithError(w, http.StatusUnauthorized, "Mising token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
+		return
+	}
+
+	_, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
+		return
+	}
+
+   taskIDStr := r.URL.Query().Get("taskId")
+   if taskIDStr == ""{
+	utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+	return
+   }
+
+   taskID, err := primitive.ObjectIDFromHex(taskIDStr)
+   if err != nil {
+	utils.RespondWithError(w, http.StatusBadRequest, "Invalid task id", "")
+	return
+   }
+
+   ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+   defer cancel()
+
+   taskCollection := database.DB.Collection("tasks")
+   var task models.Task
+
+   err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
+   if err != nil {
+	utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
+	return
+   }
+
+   var body struct {
+	AssignedTo string `json:"assignedto"`
+   }
+   err = json.NewDecoder(r.Body).Decode(&body)
+   if err != nil {
+	utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
+	return
+   }
+
+   assignedTo, _ := primitive.ObjectIDFromHex(body.AssignedTo)
+
+   memberCollection := database.DB.Collection("team-members")
+   var member models.TeamMember
+
+   err = memberCollection.FindOne(ctx, bson.M{"user": assignedTo}).Decode(&member)
+   if err != nil {
+	utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
+	return
+   }
+
+   update := bson.M{"set": bson.M{"assignedTo": assignedTo}}
+   result, err := database.DB.Collection("tasks").UpdateOne(ctx, bson.M{"_id": taskID}, update)
+   if err != nil{
+	utils.RespondWithError(w, http.StatusInternalServerError, "Error assining task", "")
+	return
+   }
+
+if result.MatchedCount == 0{
+	utils.RespondWithError(w, http.StatusInternalServerError, "Failed to find task", "")
+	return
+}
+}
+
+func DeleteTask() {}
+
+func Status() {}
