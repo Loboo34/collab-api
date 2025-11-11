@@ -144,7 +144,7 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	if tokenString == ""{
+	if tokenString == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Mising token", "")
 		return
 	}
@@ -163,63 +163,163 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-   taskIDStr := r.URL.Query().Get("taskId")
-   if taskIDStr == ""{
-	utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
-	return
-   }
+	taskIDStr := r.URL.Query().Get("taskId")
+	if taskIDStr == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+		return
+	}
 
-   taskID, err := primitive.ObjectIDFromHex(taskIDStr)
-   if err != nil {
-	utils.RespondWithError(w, http.StatusBadRequest, "Invalid task id", "")
-	return
-   }
+	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task id", "")
+		return
+	}
 
-   ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-   defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-   taskCollection := database.DB.Collection("tasks")
-   var task models.Task
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
 
-   err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
-   if err != nil {
-	utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
-	return
-   }
+	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
+		return
+	}
 
-   var body struct {
-	AssignedTo string `json:"assignedto"`
-   }
-   err = json.NewDecoder(r.Body).Decode(&body)
-   if err != nil {
-	utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
-	return
-   }
+	var body struct {
+		AssignedTo string `json:"assignedto"`
+	}
+	err = json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
+		return
+	}
 
-   assignedTo, _ := primitive.ObjectIDFromHex(body.AssignedTo)
+	assignedTo, _ := primitive.ObjectIDFromHex(body.AssignedTo)
 
-   memberCollection := database.DB.Collection("team-members")
-   var member models.TeamMember
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
 
-   err = memberCollection.FindOne(ctx, bson.M{"user": assignedTo}).Decode(&member)
-   if err != nil {
-	utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
-	return
-   }
+	err = memberCollection.FindOne(ctx, bson.M{"user": assignedTo}).Decode(&member)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
+		return
+	}
 
-   update := bson.M{"set": bson.M{"assignedTo": assignedTo}}
-   result, err := database.DB.Collection("tasks").UpdateOne(ctx, bson.M{"_id": taskID}, update)
-   if err != nil{
-	utils.RespondWithError(w, http.StatusInternalServerError, "Error assining task", "")
-	return
-   }
+	update := bson.M{"set": bson.M{"assignedTo": assignedTo}}
+	result, err := database.DB.Collection("tasks").UpdateOne(ctx, bson.M{"_id": taskID}, update)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error assining task", "")
+		return
+	}
 
-if result.MatchedCount == 0{
-	utils.RespondWithError(w, http.StatusInternalServerError, "Failed to find task", "")
-	return
+	if result.MatchedCount == 0 {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to find task", "")
+		return
+	}
 }
+
+func Status(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Put Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing auth token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
+		return
+	}
+
+	userIDStr, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
+		return
+	}
+
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	taskIDStr := r.URL.Query().Get("taskId")
+	if taskIDStr == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+		return
+	}
+
+	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid taskID", "")
+		return
+	}
+
+	var body struct {
+		TaskID string `json:"taskID"`
+		Status string `json:"status"`
+	}
+
+	if err = json.NewDecoder(r.Body).Decode(&body); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Json Format", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	teamMemberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = teamMemberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
+		return
+	}
+
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
+
+	err = taskCollection.FindOne(ctx, bson.M{"taskId": body.TaskID}).Decode(&task)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding task", "")
+	}
+	err = taskCollection.FindOne(ctx, bson.M{"assignedTo": userID}).Decode(&task)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding task", "")
+	}
+
+	if task.AssignedTo != userID {
+		utils.RespondWithError(w, http.StatusBadRequest, "Task is not assigned to user", "")
+		return
+	}
+
+	result, err := taskCollection.UpdateOne(ctx, bson.M{"taskId": taskID}, bson.M{"$set": bson.M{"status": body.Status}})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating task status", "")
+		return
+	}
+
+	if result.MatchedCount == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
+		return
+	}
+
+	utils.Logger.Info("Task Status Updated Successfuly")
+	utils.RespondWithJSON(w, http.StatusOK, "Update successful", map[string]interface{}{
+		"taskID": taskIDStr,
+		"status": body.Status,
+	})
+
 }
 
 func DeleteTask() {}
-
-func Status() {}
