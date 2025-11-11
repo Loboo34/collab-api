@@ -14,4 +14,5 @@ type Task struct{
 	TeamId primitive.ObjectID `bson:"teamid" json:"teamid"`
 	ProjectId primitive.ObjectID `bson:"projectId,omitempty" json:"projectid"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdat"`
+	CreatedBy string`bson:"createdBy" json:"createdBy"`
 }

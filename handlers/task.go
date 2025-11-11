@@ -322,4 +322,74 @@ func Status(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func DeleteTask() {}
+func DeleteTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Auth token", "")
+		return
+	}
+
+	userID, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
+		return
+	}
+
+	taskIDStr := r.URL.Query().Get("taskId")
+	if taskIDStr == ""{
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+		return
+	}
+	taskID,_ := primitive.ObjectIDFromHex(taskIDStr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
+
+	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
+	if err != nil{
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing task", "")
+		return
+	}
+
+	if task.CreatedBy != userID && role != "Admin"{
+		utils.RespondWithError(w, http.StatusForbidden, "Not Permited to perform action", "")
+		return
+	}
+
+	result, err := taskCollection.DeleteOne(ctx, bson.M{"_id": taskID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error While deliting task", "")
+		return
+	}
+
+	if result.DeletedCount == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
+		return
+	}
+
+
+	utils.Logger.Info("Task deleted successfuly")
+	utils.RespondWithJSON(w, http.StatusOK, "Task Deleted", "")
+}
