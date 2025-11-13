@@ -355,11 +355,11 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	taskIDStr := r.URL.Query().Get("taskId")
-	if taskIDStr == ""{
+	if taskIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
 		return
 	}
-	taskID,_ := primitive.ObjectIDFromHex(taskIDStr)
+	taskID, _ := primitive.ObjectIDFromHex(taskIDStr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -368,12 +368,12 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	var task models.Task
 
 	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
-	if err != nil{
+	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing task", "")
 		return
 	}
 
-	if task.CreatedBy != userID && role != "Admin"{
+	if task.CreatedBy != userID && role != "Admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "Not Permited to perform action", "")
 		return
 	}
@@ -389,94 +389,92 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	utils.Logger.Info("Task deleted successfuly")
 	utils.RespondWithJSON(w, http.StatusOK, "Task Deleted", "")
 }
 
-func GetTasks(w http.ResponseWriter, r *http.Request){
-if r.Method != http.MethodGet {
-	utils.RespondWithError(w, http.StatusMethodNotAllowed, "Method not Allowed", "")
-	return
-}
-
-tokenString := r.Header.Get("Authorization")
-if tokenString == ""{
-	utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-	return
-}
-
-tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-claims, err := utils.ValidateJWT(tokenString)
-if err != nil {
-	utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
-	return
-}
-
-userID := claims["id"].(string)
-
-projectIDStr := r.URL.Query().Get("projectId")
-
-projectID, err := primitive.ObjectIDFromHex(projectIDStr)
-if err != nil {
-	utils.RespondWithError(w, http.StatusBadRequest, "Invalid project ID", "")
-	return
-}
-
-ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-
-memberCollection := database.DB.Collection("team-member")
-var member models.TeamMember
-
-err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
-if err != nil {
-	utils.RespondWithError(w, http.StatusBadRequest, "User is not on team", "")
-	return
-}
-
-taskCollection := database.DB.Collection("tasks")
-cursor, err := taskCollection.Find(ctx, bson.M{"projectId": projectID})
-if err != nil {
-	utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching tasks", "")
-	return
-}
-
-defer cursor.Close(ctx)
-
-var tasks []models.Task
-for cursor.Next(ctx){
-	var task models.Task
-	if err := cursor.Decode(&task); err != nil{
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding task", "")
+func GetTasks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Method not Allowed", "")
 		return
 	}
-	tasks = append(tasks, task)
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
+		return
+	}
+
+	userID := claims["id"].(string)
+
+	projectIDStr := r.URL.Query().Get("projectId")
+
+	projectID, err := primitive.ObjectIDFromHex(projectIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid project ID", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	memberCollection := database.DB.Collection("team-member")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "User is not on team", "")
+		return
+	}
+
+	taskCollection := database.DB.Collection("tasks")
+	cursor, err := taskCollection.Find(ctx, bson.M{"projectId": projectID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching tasks", "")
+		return
+	}
+
+	defer cursor.Close(ctx)
+
+	var tasks []models.Task
+	for cursor.Next(ctx) {
+		var task models.Task
+		if err := cursor.Decode(&task); err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding task", "")
+			return
+		}
+		tasks = append(tasks, task)
+	}
+
+	if err = cursor.Err(); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
+		return
+	}
+
+	utils.Logger.Info("Fetched team projects successfully")
+	utils.RespondWithJSON(w, http.StatusOK, "Projects retrieved", map[string]interface{}{
+		"project_id": projectID.Hex(),
+		"tasks":      tasks,
+	})
+
 }
 
- if err = cursor.Err(); err != nil {
-        utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
-        return
-    }
-
-    utils.Logger.Info("Fetched team projects successfully")
-    utils.RespondWithJSON(w, http.StatusOK, "Projects retrieved", map[string]interface{}{
-        "project_id":  projectID.Hex(),
-        "tasks": tasks,
-    })
-
-}
-
-
-func getTask(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodGet{
+func GetTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only get Allowed", "")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	if tokenString == ""{
+	if tokenString == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
 		return
 	}
@@ -491,5 +489,44 @@ func getTask(w http.ResponseWriter, r *http.Request){
 
 	userID := claims["id"].(string)
 
-	
+	taskIDStr := r.URL.Query().Get("taskId")
+	if taskIDStr == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
+		return
+	}
+
+	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task ID", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding user ", "")
+		return
+	}
+
+	if userID != member.User {
+		utils.RespondWithError(w, http.StatusForbidden, "User must be part of team", "")
+		return
+	}
+
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
+
+	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching task", "")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"task": task})
+
 }

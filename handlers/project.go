@@ -55,12 +55,12 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	teamIDStr := r.URL.Query().Get("teamId")
-	if teamIDStr == ""{
+	if teamIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing team id", "")
 		return
 	}
 
-	teamID , err := primitive.ObjectIDFromHex(teamIDStr)
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team id", "")
 		return
@@ -93,7 +93,7 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_,err = teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$addToSet": bson.M{"projects": project.ID}})
+	_, err = teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$addToSet": bson.M{"projects": project.ID}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding project to teams", "")
 	}
@@ -164,11 +164,11 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updates struct {
-		  Name        string `json:"name"`
-    Description string `json:"description"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
 	}
 
-	if err = json.NewDecoder(r.Body).Decode(&updates); err != nil{
+	if err = json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
@@ -274,14 +274,14 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithError(w, http.StatusOK, "Project deleted", map[string]interface{}{"Project": projectID, "user": userID})
 }
 
-func GetProjects(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodGet{
+func GetProjects(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Get Allowe", "")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	if tokenString == ""{
+	if tokenString == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
 		return
 	}
@@ -289,19 +289,19 @@ func GetProjects(w http.ResponseWriter, r *http.Request){
 	tokenString = strings.TrimPrefix(tokenString, "Beare ")
 
 	claims, err := utils.ValidateJWT(tokenString)
-	if err != nil{
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid toke", "")
 		return
 	}
 
-	_,ok := claims["id"].(string)
+	_, ok := claims["id"].(string)
 	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user Id", "")
 		return
 	}
 
 	teamIDstr := r.URL.Query().Get("teamId")
-	if teamIDstr == ""{
+	if teamIDstr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing team id", "")
 		return
 	}
@@ -319,39 +319,102 @@ func GetProjects(w http.ResponseWriter, r *http.Request){
 	var team models.Team
 
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
-	if err != nil{
+	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Error locating team", "")
 		return
 	}
 
 	projectCollection := database.DB.Collection("projects")
 	cursor, err := projectCollection.Find(ctx, bson.M{"teamid": teamID})
-if err != nil{
-	utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching projets", "")
-	return
-}
-defer cursor.Close(ctx)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching projets", "")
+		return
+	}
+	defer cursor.Close(ctx)
 	var projects []models.Project
-	for cursor.Next(ctx){
+	for cursor.Next(ctx) {
 		var project models.Project
-		if err := cursor.Decode(&project); err != nil{
+		if err := cursor.Decode(&project); err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding project", "")
 			return
 		}
 		projects = append(projects, project)
 	}
 
-	 if err = cursor.Err(); err != nil {
-        utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
-        return
-    }
+	if err = cursor.Err(); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
+		return
+	}
 
-    utils.Logger.Info("Fetched team projects successfully")
-    utils.RespondWithJSON(w, http.StatusOK, "Projects retrieved", map[string]interface{}{
-        "team_id":  teamID.Hex(),
-        "projects": projects,
-        "count":    len(projects),
-    })
+	utils.Logger.Info("Fetched team projects successfully")
+	utils.RespondWithJSON(w, http.StatusOK, "Projects retrieved", map[string]interface{}{
+		"team_id":  teamID.Hex(),
+		"projects": projects,
+		"count":    len(projects),
+	})
 
+}
+
+func GetProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only get Allowed", "")
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Beare ")
+
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "invalid Token string", "")
+		return
+	}
+
+	userID := claims["id"].(string)
+
+	projectIDStr := r.URL.Query().Get("taskId")
+	if projectIDStr == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
+		return
+	}
+
+	projectID, err := primitive.ObjectIDFromHex(projectIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task ID", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Error finding user ", "")
+		return
+	}
+
+	if userID != member.User {
+		utils.RespondWithError(w, http.StatusForbidden, "User must be part of team", "")
+		return
+	}
+
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
+
+	err = taskCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&task)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching task", "")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"task": task})
 
 }
