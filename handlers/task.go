@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
@@ -27,6 +28,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusUnauthorized, "missing Auth token", "")
 		return
 	}
+
 	tokenstring = strings.TrimPrefix(tokenstring, "Bearer ")
 
 	claims, err := utils.ValidateJWT(tokenstring)
@@ -41,32 +43,69 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var request struct {
+		Title string `json:"title"`
+		Description string `json:"description"`
+		TeamID string `json:"teamId"`
+		ProjectID string `json:"projectId"`
+	}
+
+	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var team models.Team
 	teamCollection := database.DB.Collection("teams")
 	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
+	if err != nil {
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Team Not Found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error Finding team", "")
+		}
+		return
+	}
 
 	var project models.Project
 	projectCollection := database.DB.Collection("projects")
 
 	err = projectCollection.FindOne(ctx, bson.M{"_id": project.ID}).Decode(&project)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error fetching project", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Project Not Found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error Finding project", "")
+		}
 		return
 	}
 
-	var task models.Task
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Json format", "")
+	teamID, err := primitive.ObjectIDFromHex(request.TeamID)
+	if err != nil {
+		utils.RespondWithError(w , http.StatusBadRequest, "invalid teamID", "")
 		return
 	}
 
-	task.ID = primitive.NewObjectID()
-	task.CreatedAt = time.Now()
-	task.TeamId = team.ID
-	task.ProjectId = project.ID
+	projectID, err := primitive.ObjectIDFromHex(request.ProjectID)
+	if err != nil {
+		utils.RespondWithError(w , http.StatusBadRequest, "invalid teamID", "")
+		return
+	}
+	
+
+	task := models.Task{
+		ID: primitive.NewObjectID(),
+		Title: request.Title,
+		Description: request.Description,
+		Status: "Pending",
+		TeamId: teamID,
+		ProjectId: projectID,
+		CreatedBy: userId,
+		CreatedAt: time.Now(),
+	}
 
 	taskCollection := database.DB.Collection("tasks")
 
@@ -86,6 +125,30 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
+		return
+	}
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	claims, err := utils.ValidateJWT(tokenString)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Token string", "")
+		return
+	}
+
+	userID, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
+		return
+	}
+
 	vars := mux.Vars(r)
 	idStr := vars["id"]
 	if idStr == "" {
@@ -100,28 +163,57 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var task models.Task
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		utils.Logger.Warn("Invalid Json format")
-		utils.RespondWithError(w, http.StatusBadRequest, "INvalid json", "")
-		return
+	var updates struct {
+		Title string `json:"title"`
+		Description string `json:"description"`
 	}
-
-	collection := database.DB.Collection("task")
-
-	update := bson.M{
-		"$set": bson.M{
-			"title":       task.Title,
-			"description": task.Description,
-			"assignedTo":  task.AssignedTo,
-			"updated":     time.Now(),
-		},
+	if err= json.NewDecoder(r.Body).Decode(&updates);err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid json", "")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := collection.UpdateOne(ctx, bson.M{"_id": objectId}, update)
+	taskCollection := database.DB.Collection("tasks")
+	var task models.Task
+	err = taskCollection.FindOne(ctx, bson.M{"_id": objectId}).Decode(&task)
+	if err != nil {
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
+		}else{
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
+		}
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"title": updates.Title,
+			"description": updates.Description,
+		},
+	}
+
+
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
+		return
+	}
+
+	if !strings.EqualFold(role, "Admin") && task.CreatedBy != userID {
+		utils.RespondWithError(w, http.StatusForbidden, "User Not allowed to perform action", "")
+		return
+	}
+
+	result, err := taskCollection.UpdateOne(ctx, bson.M{"_id": objectId}, update)
+	//err = taskCollection.FindOne()
 	if err != nil {
 		utils.Logger.Warn("Failed to update task")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating Task", "")
@@ -134,7 +226,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Update successful"})
+	utils.RespondWithJSON(w, http.StatusOK, "Update successful", map[string]interface{}{"taskID": task})
 }
 
 func AssignTo(w http.ResponseWriter, r *http.Request) {
@@ -183,12 +275,16 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 
 	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
+		}
 		return
 	}
 
 	var body struct {
-		AssignedTo string `json:"assignedto"`
+		AssignedTo string `json:"assignedTo"`
 	}
 	err = json.NewDecoder(r.Body).Decode(&body)
 	if err != nil {
@@ -196,18 +292,26 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assignedTo, _ := primitive.ObjectIDFromHex(body.AssignedTo)
-
 	memberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = memberCollection.FindOne(ctx, bson.M{"user": assignedTo}).Decode(&member)
+	err = memberCollection.FindOne(ctx, bson.M{"user": body.AssignedTo}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding team member", "")
+		}
 		return
 	}
 
-	update := bson.M{"set": bson.M{"assignedTo": assignedTo}}
+	assignedTOID, err := primitive.ObjectIDFromHex(body.AssignedTo)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	update := bson.M{"$set": bson.M{"assignedTo": assignedTOID}}
 	result, err := database.DB.Collection("tasks").UpdateOne(ctx, bson.M{"_id": taskID}, update)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error assining task", "")
@@ -246,11 +350,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
-		return
-	}
+	
 
 	taskIDStr := r.URL.Query().Get("taskId")
 	if taskIDStr == "" {
@@ -265,7 +365,6 @@ func Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		TaskID string `json:"taskID"`
 		Status string `json:"status"`
 	}
 
@@ -274,36 +373,52 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	validStatuses := map[string]bool{"pending": true, "inProgress": true, "done": true}
+    if !validStatuses[body.Status] {
+        utils.RespondWithError(w, http.StatusBadRequest, "Invalid status. Must be: pending, inProgress, or done", "")
+        return
+    }
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	teamMemberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = teamMemberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	err = teamMemberCollection.FindOne(ctx, bson.M{"user": userIDStr}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding member", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
 		return
 	}
 
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
 
-	err = taskCollection.FindOne(ctx, bson.M{"taskId": body.TaskID}).Decode(&task)
+	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding task", "")
-	}
-	err = taskCollection.FindOne(ctx, bson.M{"assignedTo": userID}).Decode(&task)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding task", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
+		}
+		return
 	}
 
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
 	if task.AssignedTo != userID {
 		utils.RespondWithError(w, http.StatusBadRequest, "Task is not assigned to user", "")
 		return
 	}
 
-	result, err := taskCollection.UpdateOne(ctx, bson.M{"taskId": taskID}, bson.M{"$set": bson.M{"status": body.Status}})
+	result, err := taskCollection.UpdateOne(ctx, bson.M{"_id": taskID}, bson.M{"$set": bson.M{"status": body.Status}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating task status", "")
 		return
@@ -315,7 +430,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Task Status Updated Successfuly")
-	utils.RespondWithJSON(w, http.StatusOK, "Update successful", map[string]interface{}{
+	utils.RespondWithJSON(w, http.StatusOK, "Status Update successfully", map[string]interface{}{
 		"taskID": taskIDStr,
 		"status": body.Status,
 	})
@@ -334,7 +449,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString = strings.TrimPrefix(tokenString, "Bearer")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
@@ -369,7 +484,11 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing task", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
+		}
 		return
 	}
 
@@ -426,12 +545,16 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	memberCollection := database.DB.Collection("team-member")
+	memberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
 	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "User is not on team", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
 		return
 	}
 
@@ -479,7 +602,7 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString = strings.TrimPrefix(tokenString, "Beare ")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
@@ -509,7 +632,11 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 
 	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding user ", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
 		return
 	}
 
@@ -521,9 +648,18 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
 
+	 if member.TeamId != task.TeamId {
+        utils.RespondWithError(w, http.StatusForbidden, "You are not a member of this task's team", "")
+        return
+    }
+
 	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching task", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
+		}
 		return
 	}
 
