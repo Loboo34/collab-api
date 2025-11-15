@@ -14,6 +14,7 @@ import (
 	"github.com/Loboo34/collab-api/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +28,8 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
 		return
 	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 	claim, err := utils.ValidateJWT(tokenString)
 	if err != nil {
@@ -51,6 +54,17 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var request struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		//TeamId      string `json:"teamId"`
+		//CreatedBy   string `json:"createdBy"`
+	}
+
+	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invlaid Json", "")
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -70,22 +84,24 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	teamCollection := database.DB.Collection("teams")
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
 		return
 	}
 
-	var project models.Project
-	if err = json.NewDecoder(r.Body).Decode(&project); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invlaid Json", "")
-		return
+	project := models.Project{
+		ID:          primitive.NewObjectID(),
+		Name:        request.Name,
+		Description: request.Description,
+		TeamId:      teamID,
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
 	}
 
-	project.ID = primitive.NewObjectID()
-	project.TeamId = teamID
-	project.CreatedBy = userID
-	project.CreatedAt = time.Now()
 	projectCollection := database.DB.Collection("projects")
-
 	_, err = projectCollection.InsertOne(ctx, project)
 	if err != nil {
 		utils.Logger.Warn("Failed to create project")
@@ -99,7 +115,7 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Project Created Successfuly")
-	utils.RespondWithJSON(w, http.StatusCreated, "", map[string]string{"message": "Successfully added project"})
+	utils.RespondWithJSON(w, http.StatusCreated, "Project created successful", map[string]string{"projectID": project.ID.Hex(), "name": project.Name})
 }
 
 func UpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -122,9 +138,9 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := claims["id"].(string)
+	userID, ok := claims["id"].(string)
 	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing ID", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
 		return
 	}
 
@@ -134,10 +150,8 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusForbidden, "Only admin is allowed", "")
-		return
-	}
+	
+
 
 	projectIDStr := r.URL.Query().Get("projectID")
 	if projectIDStr == "" {
@@ -159,7 +173,16 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Project Not found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
+		}
+		return
+	}
+
+	if !strings.EqualFold(role, "Admin") && userID !=  project.CreatedBy{
+		utils.RespondWithError(w, http.StatusForbidden, "User Not authorized to perform action", "")
 		return
 	}
 
@@ -175,8 +198,8 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	update := bson.M{
 		"$set": bson.M{
-			"name":        project.Name,
-			"description": project.Description,
+			"name":        updates.Name,
+			"description": updates.Description,
 		},
 	}
 
@@ -192,7 +215,7 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Project updated successfuly")
-	utils.RespondWithJSON(w, http.StatusOK, "Project updated", "")
+	utils.RespondWithJSON(w, http.StatusOK, "Project updated", map[string]interface{}{"projectID": project.ID})
 }
 
 func DeleteProject(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +230,8 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
 	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Ivalid Token", "")
@@ -215,7 +240,7 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := claims["id"].(string)
 	if !ok {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
 		return
 	}
 
@@ -245,12 +270,18 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+
+
 	projectCollection := database.DB.Collection("projects")
 	var project models.Project
 
 	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Failed to find project", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Project Not found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
+		}
 		return
 	}
 
@@ -270,6 +301,24 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	 taskCollection := database.DB.Collection("tasks")
+    _, err = taskCollection.DeleteMany(ctx, bson.M{"projectId": projectID})
+    if err != nil {
+        utils.Logger.Warn("Failed to delete project tasks")
+      
+    }
+
+   
+    teamCollection := database.DB.Collection("teams")
+    _, err = teamCollection.UpdateOne(
+        ctx,
+        bson.M{"_id": project.TeamId},
+        bson.M{"$pull": bson.M{"projects": projectID}},
+    )
+    if err != nil {
+        utils.Logger.Warn("Failed to update team's projects array")
+    }
+
 	utils.Logger.Info("Project deleted successfuly")
 	utils.RespondWithError(w, http.StatusOK, "Project deleted", map[string]interface{}{"Project": projectID, "user": userID})
 }
@@ -286,7 +335,7 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString = strings.TrimPrefix(tokenString, "Beare ")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
@@ -294,7 +343,7 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := claims["id"].(string)
+	userID, ok := claims["id"].(string)
 	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user Id", "")
 		return
@@ -315,12 +364,29 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
+		return
+	}
+
 	teamCollection := database.DB.Collection("teams")
 	var team models.Team
 
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error locating team", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Team Not found", "")
+		}else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding team", "")
+		}
 		return
 	}
 
@@ -367,7 +433,7 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString = strings.TrimPrefix(tokenString, "Beare ")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 	claims, err := utils.ValidateJWT(tokenString)
 	if err != nil {
@@ -375,9 +441,13 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := claims["id"].(string)
+	userID, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing user ID", "")
+		return
+	}
 
-	projectIDStr := r.URL.Query().Get("taskId")
+	projectIDStr := r.URL.Query().Get("projectId")
 	if projectIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
 		return
@@ -392,19 +462,33 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	projectCollection := database.DB.Collection("projects")
+	var project models.Project
+
+	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
+	if err != nil {
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
+		}
+		return
+	}
+
 	memberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID, "teamId": project.TeamId}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error finding user ", "")
+		if err == mongo.ErrNoDocuments{
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
 		return
 	}
 
-	if userID != member.User {
-		utils.RespondWithError(w, http.StatusForbidden, "User must be part of team", "")
-		return
-	}
+	
 
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
@@ -415,6 +499,6 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"task": task})
+	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"project": project})
 
 }
