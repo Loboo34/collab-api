@@ -12,6 +12,7 @@ import (
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
 	"github.com/Loboo34/collab-api/utils"
+	
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -44,34 +45,40 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var team models.Team
-	if err = json.NewDecoder(r.Body).Decode(&team); err != nil {
+	var request struct {
+		Name string `json:"name"`
+	}
+	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json", "")
 		return
 	}
-	team.ID = primitive.NewObjectID()
-	team.CreatedBy = userID
-	team.Members = []string{userID}
-	team.CreatedAt = time.Now()
 
 	teamCollection := database.DB.Collection("teams")
 
-	var members models.TeamMember
-	members.TeamId = team.ID
-	members.User = userID
-	members.Role = "Admin"
-	members.JoinedAt = time.Now()
+	team := models.Team{
+		ID:        primitive.NewObjectID(),
+		Name:      request.Name,
+		CreatedBy: userID,
+		CreatedAt: time.Now(),
+	}
 
 	membersCollection := database.DB.Collection("team-members")
 
-	//var user models.User
-	//user.Teams = team.ID
+	members := models.TeamMember{
+		ID:       primitive.NewObjectID(),
+		TeamId:   team.ID,
+		User:     userID,
+		Role:     "Admin",
+		JoinedAt: time.Now(),
+	}
 
 	userCollection := database.DB.Collection("users")
 	userObjID, _ := primitive.ObjectIDFromHex(userID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
 
 	_, err = teamCollection.InsertOne(ctx, team)
 	if err != nil {
@@ -100,7 +107,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 
 	tokenString := r.Header.Get("Authorization")
 	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing token", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing auth token", "")
 		return
 	}
 
@@ -349,7 +356,11 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Team not found", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
 		return
 	}
 
@@ -439,7 +450,11 @@ func DeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
 		return
 	}
 
@@ -542,7 +557,11 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	var team models.Team
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Team Not Found", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
 		return
 	}
 
@@ -550,7 +569,11 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	var member models.TeamMember
 	err = membersCollection.FindOne(ctx, bson.M{"memberID": body.MemberID}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Member Not found", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Member", "")
+		}
 		return
 	}
 
@@ -566,7 +589,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Changed users role successfully")
-	utils.RespondWithJSON(w, http.StatusOK, "Role changed successfuly", "")
+	utils.RespondWithJSON(w, http.StatusOK, "Role changed successfuly", map[string]interface{}{"user": member.ID, "role": body.Role})
 }
 
 func RemoveMember(w http.ResponseWriter, r *http.Request) {
