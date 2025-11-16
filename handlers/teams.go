@@ -12,7 +12,7 @@ import (
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
 	"github.com/Loboo34/collab-api/utils"
-	
+	"github.com/gorilla/mux"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -330,13 +330,14 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := claims["id"].(string)
+	userID, ok := claims["id"].(string)
 	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
 		return
 	}
 
-	teamIDStr := r.URL.Query().Get("teamId")
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing team ID", "")
 		return
@@ -366,6 +367,16 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 
 	membersCollection := database.DB.Collection("team-members")
 	var members []models.TeamMember
+
+	err = membersCollection.FindOne(ctx, bson.M{"user": userID, "teamId": teamID}).Decode(&members)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member ", "")
+		}
+		return
+	}
 
 	cursor, err := membersCollection.Find(ctx, bson.M{"teamId": teamID})
 	if err != nil {
@@ -430,7 +441,8 @@ func DeleteTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamIDStr := r.URL.Query().Get("teamId")
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team id", "")
 		return
@@ -523,7 +535,9 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Only admin is allowed", "")
 		return
 	}
-	teamIDStr := r.URL.Query().Get("teamId")
+
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing team ID", "")
 		return
@@ -567,7 +581,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 
 	membersCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
-	err = membersCollection.FindOne(ctx, bson.M{"memberID": body.MemberID}).Decode(&member)
+	err = membersCollection.FindOne(ctx, bson.M{"user": body.MemberID, "teamId": teamID}).Decode(&member)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
@@ -629,13 +643,18 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	memberIDStr := r.URL.Query().Get("memberId")
-	if memberIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing member id", "")
+
+	var request struct {
+		User string `json:"user"`
+	}
+
+	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
 
-	teamIDStr := r.URL.Query().Get("teamId")
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Error getting team id", "")
 		return
@@ -655,20 +674,27 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "No team matching ID", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
 		return
 	}
 
 	membersCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = membersCollection.FindOne(ctx, bson.M{"user": memberIDStr, "teamId": teamID}).Decode(&member)
+	err = membersCollection.FindOne(ctx, bson.M{"user": request.User, "teamId": teamID}).Decode(&member)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Error Finding user", "")
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Member", "")
+		}
 		return
 	}
-
-	result, err := membersCollection.DeleteOne(ctx, bson.M{"user": memberIDStr, "teamId": teamID})
+	result, err := membersCollection.DeleteOne(ctx, bson.M{"user": request.User, "teamId": teamID})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error Removing user", "")
 		return
@@ -682,7 +708,7 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 	_, err = teamCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": teamID},
-		bson.M{"$pull": bson.M{"members": memberIDStr}},
+		bson.M{"$pull": bson.M{"members": request.User}},
 	)
 	if err != nil {
 		utils.Logger.Warn("Failed to update team members array")
@@ -690,7 +716,7 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userCollection := database.DB.Collection("users")
-	userObjID, _ := primitive.ObjectIDFromHex(memberIDStr)
+	userObjID, _ := primitive.ObjectIDFromHex(request.User)
 	_, err = userCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": userObjID},
@@ -704,6 +730,6 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 	utils.Logger.Info("User successfully removed from team")
 	utils.RespondWithJSON(w, http.StatusOK, "Member removed successfully", map[string]interface{}{
 		"team_id":   teamID.Hex(),
-		"member_id": memberIDStr,
+		"member_id": request.User,
 	})
 }
