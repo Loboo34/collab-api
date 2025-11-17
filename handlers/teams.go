@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -78,8 +79,6 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
-
 	_, err = teamCollection.InsertOne(ctx, team)
 	if err != nil {
 		utils.Logger.Warn("Failed to Create team")
@@ -125,40 +124,30 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userRole, ok := claims["role"].(string)
+	role, ok := claims["role"].(string)
 	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User role not found", "")
 		return
 	}
 
-	if !strings.EqualFold(userRole, "Admin") {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User is not admin", "")
+	fmt.Println("id:", userId)
+	fmt.Println("role:", role)
+	if !strings.EqualFold(role, "Admin") {
+		utils.RespondWithError(w, http.StatusForbidden, "User is not admin", "")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	type InvetmentRequest struct {
+	type InveteRequest struct {
 		Email  string `json:"email"`
 		TeamId string `json:"teamId"`
 	}
 
-	var req InvetmentRequest
+	var req InveteRequest
 	if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
-		return
-	}
-
-	userCollection := database.DB.Collection("users")
-	var user models.User
-	err = userCollection.FindOne(ctx, bson.M{"email": req.Email}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "User not found", "")
-		} else {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding user", "")
-		}
 		return
 	}
 
@@ -180,6 +169,47 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userId, "teamId": teamObjId, "role": "Admin"}).Decode(&member)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
+		return
+	}
+
+	userCollection := database.DB.Collection("users")
+	var user models.User
+	err = userCollection.FindOne(ctx, bson.M{"email": req.Email}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "User not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding user", "")
+		}
+		return
+	}
+
+	var existingMember models.TeamMember
+	err = memberCollection.FindOne(ctx, bson.M{"user": user.ID.Hex(), "teamId": teamObjId}).Decode(&existingMember)
+	if err == nil {
+		utils.RespondWithError(w, http.StatusConflict, "User Already exists in team", "")
+		return
+	}
+
+	inviteCollection := database.DB.Collection("invites")
+	var existingInvite models.Invite
+
+	err = inviteCollection.FindOne(ctx, bson.M{"email": user.Email, "teamId": teamObjId, "status": "pending"}).Decode(&existingInvite)
+	if err == nil {
+		utils.RespondWithError(w, http.StatusConflict, "invite Already exists", "")
+		return
+	}
+
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error generating token", "")
@@ -197,26 +227,39 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	inviteCollection := database.DB.Collection("invites")
 	_, err = inviteCollection.InsertOne(ctx, invite)
 	if err != nil {
 		utils.Logger.Warn("Failed to create invite")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error creating invite", "")
+		return
 	}
 
 	inviteLink := "http://localhost:3000/invite/accept?token=" + inviteToken
 
 	if err := utils.SendInviteEmail(user.Email, inviteLink); err != nil {
 		utils.Logger.Warn("Failed to send email")
-		utils.RespondWithError(w, http.StatusInternalServerError, "Erreor sending email", "")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error sending email", "")
+		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, "Invitation sent successfully", map[string]interface{}{"user": user.ID})
+	
+	utils.RespondWithJSON(w, http.StatusCreated, "Invitation sent successfully", map[string]interface{}{
+		"email":     user.Email,
+		"team_id":   teamObjId.Hex(),
+		"team_name": team.Name,
+		"sent_by":   userId,
+	})
 }
 
 func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		return
+	}
+
+	inviteToken := r.URL.Query().Get("token")
+	if inviteToken == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing invite token", "")
 		return
 	}
 
@@ -236,39 +279,110 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := claims["id"].(string)
 	if !ok {
-		utils.RespondWithError(w, http.StatusNotFound, "Missing Id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
 		return
 	}
-
-	id, _ := primitive.ObjectIDFromHex(userID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	
 	inviteCollection := database.DB.Collection("invites")
 	var invite models.Invite
-	err = inviteCollection.FindOne(ctx, bson.M{"token": invite.Token}).Decode(&invite)
+	err = inviteCollection.FindOne(ctx, bson.M{"token": inviteToken}).Decode(&invite)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Invalid or expired invite", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding invite", "")
+		}
+		return
+	}
+
+	if invite.Status != "pending" {
+		utils.RespondWithError(w, http.StatusConflict, "Invite already processed", "")
+		return
+	}
+
+	
+	userCollection := database.DB.Collection("users")
+	userObjID, _ := primitive.ObjectIDFromHex(userID)
+	var user models.User
+	err = userCollection.FindOne(ctx, bson.M{"_id": userObjID}).Decode(&user)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error finding user", "")
+		return
+	}
+
+	if user.Email != invite.Email {
+		utils.RespondWithError(w, http.StatusForbidden, "This invite is for a different user", "")
+		return
+	}
+
 
 	membersCollection := database.DB.Collection("team-members")
-	_, err = membersCollection.UpdateOne(ctx, bson.M{"_id": invite.TeamID}, bson.M{"$addToSet": bson.M{"teamMembers": id}})
+	newMember := models.TeamMember{
+		ID:       primitive.NewObjectID(),
+		TeamId:   invite.TeamID,
+		User:     userID,
+		Role:     "Member",
+		JoinedAt: time.Now(),
+	}
+
+	_, err = membersCollection.InsertOne(ctx, newMember)
 	if err != nil {
 		utils.Logger.Warn("Failed to Add user to team")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error adding member to team", "")
 		return
 	}
 
-	_, err = inviteCollection.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "accepted"}})
+
+	_, err = userCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": userObjID},
+		bson.M{"$addToSet": bson.M{"teams": invite.TeamID}},
+	)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error changing invite status", "")
+		utils.Logger.Warn("Failed to update user teams")
+	}
+
+	
+	teamCollection := database.DB.Collection("teams")
+	_, err = teamCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": invite.TeamID},
+		bson.M{"$addToSet": bson.M{"members": userID}},
+	)
+	if err != nil {
+		utils.Logger.Warn("Failed to update team members")
+	}
+
+	
+	_, err = inviteCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": invite.ID},
+		bson.M{"$set": bson.M{"status": "accepted"}},
+	)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating invite status", "")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, "Invite Accepted", map[string]interface{}{"user": id})
+	utils.RespondWithJSON(w, http.StatusOK, "Invite accepted successfully", map[string]interface{}{
+		"team_id": invite.TeamID.Hex(),
+		"user_id": userID,
+	})
 }
 
 func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowe", "")
+		return
+	}
+
+	inviteToken := r.URL.Query().Get("token")
+	if inviteToken == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing invite token", "")
 		return
 	}
 
@@ -297,10 +411,26 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	inviteCollectioon := database.DB.Collection("invites")
+	inviteCollection := database.DB.Collection("invites")
 	var invite models.Invite
 
-	_, err = inviteCollectioon.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "declined"}})
+	
+	err = inviteCollection.FindOne(ctx, bson.M{"token": inviteToken}).Decode(&invite)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Invalid or expired invite", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding invite", "")
+		}
+		return
+	}
+
+	if invite.Status != "pending" {
+		utils.RespondWithError(w, http.StatusConflict, "Invite already processed", "")
+		return
+	}
+
+	_, err = inviteCollection.UpdateOne(ctx, bson.M{"_id": invite.ID}, bson.M{"$set": bson.M{"status": "declined"}})
 	if err != nil {
 		utils.Logger.Warn("Failed to decline Invitation")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error declinign invitation", "")
@@ -318,7 +448,7 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 
 	tokenString := r.Header.Get("Authorization")
 	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusNotFound, "Missing Auth token", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
 		return
 	}
 
@@ -366,9 +496,9 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	membersCollection := database.DB.Collection("team-members")
-	var members []models.TeamMember
+	var userMember models.TeamMember
 
-	err = membersCollection.FindOne(ctx, bson.M{"user": userID, "teamId": teamID}).Decode(&members)
+	err = membersCollection.FindOne(ctx, bson.M{"user": userID, "teamId": teamID}).Decode(&userMember)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
@@ -385,7 +515,7 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer cursor.Close(ctx)
-
+	var members []models.TeamMember
 	for cursor.Next(ctx) {
 		var member models.TeamMember
 		if err := cursor.Decode(&member); err != nil {
@@ -558,11 +688,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	MemberID, err := primitive.ObjectIDFromHex(body.MemberID)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid memberid", "")
-		return
-	}
+	
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -591,7 +717,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := membersCollection.UpdateOne(ctx, bson.M{"teamId": teamID, "user": MemberID}, bson.M{"$set": bson.M{"role": "body.Role"}})
+	result, err := membersCollection.UpdateOne(ctx, bson.M{"teamId": teamID, "user": body.MemberID}, bson.M{"$set": bson.M{"role": body.Role}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Faile to update role", "")
 		return
@@ -642,7 +768,6 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin Can perform Action", "")
 		return
 	}
-
 
 	var request struct {
 		User string `json:"user"`

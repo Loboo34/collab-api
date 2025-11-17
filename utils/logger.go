@@ -13,6 +13,7 @@ func InitLogger(){
 	Logger, err = zap.NewProduction()
 	if err != nil{
 		log.Fatalf("Failed to initialize logger with %v", err)
+		panic(err)
 	}
 
 	defer Logger.Sync()

@@ -12,6 +12,7 @@ import (
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/handlers"
 	"github.com/Loboo34/collab-api/middleware"
+	"github.com/Loboo34/collab-api/utils"
 )
 
 func init() {
@@ -28,6 +29,11 @@ func main() {
 
 	db := database.ConnectDB()
 	fmt.Println("DbName:", db.Name())
+	utils.InitLogger()
+
+	if err := utils.InitJWT(); err != nil {
+		log.Fatal("Failed to initialize JWT:", err)
+	}
 
 	//handlers
 	//auth
@@ -35,9 +41,9 @@ func main() {
 	r.HandleFunc("/login", handlers.LoginUser).Methods("POST")
 
 	// teams
-	r.HandleFunc("/creat/team", handlers.CreateTeam).Methods("Post")
-	r.HandleFunc("/invite/team", handlers.InviteMember).Methods("Post")
-	// r.HandleFunc("/invite/accept", handlers.AcceptInvite).Methods("Post")
+	r.HandleFunc("/team/create", handlers.CreateTeam).Methods("Post")
+	r.HandleFunc("/team/invite", handlers.InviteMember).Methods("Post")
+	r.HandleFunc("/invite/accept", handlers.AcceptInvite).Methods("Post")
 	// r.HandleFunc("/invite/Decline", handlers.DeclineInvite).Methods("Post")
 	r.HandleFunc("/team/{teamId}/members", handlers.GetTeamMembers).Methods("Get")
 	r.HandleFunc("/team/{teamId}", handlers.DeleteTeam).Methods("Delete")

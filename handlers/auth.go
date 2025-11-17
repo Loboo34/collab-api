@@ -81,9 +81,19 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-token, err := utils.GenerateJWT(exists.Email)
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	role := ""
+	err = memberCollection.FindOne(ctx, bson.M{"user": exists.ID.Hex()}).Decode(&member)
+	if err == nil {
+		role = member.Role
+	}
+
+token, err := utils.GenerateJWT(exists.ID.Hex(),exists.Email, role)
 if err != nil{
 	utils.RespondWithError(w, http.StatusInternalServerError, "Failed to login", "")
+	return
 }
 
 utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]string{"token": token})
