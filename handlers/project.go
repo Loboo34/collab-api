@@ -217,7 +217,7 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Project updated successfuly")
-	utils.RespondWithJSON(w, http.StatusOK, "Project updated", map[string]interface{}{"projectID": project.ID})
+	utils.RespondWithJSON(w, http.StatusOK, "Project updated", map[string]interface{}{"projectID": project.ID, "name": updates.Name})
 }
 
 func DeleteProject(w http.ResponseWriter, r *http.Request) {
@@ -306,6 +306,7 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	_, err = taskCollection.DeleteMany(ctx, bson.M{"projectId": projectID})
 	if err != nil {
 		utils.Logger.Warn("Failed to delete project tasks")
+		return
 
 	}
 
@@ -317,6 +318,7 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		utils.Logger.Warn("Failed to update team's projects array")
+		return
 	}
 
 	utils.Logger.Info("Project deleted successfuly")
@@ -499,6 +501,8 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+
+	utils.Logger.Info("Project fetched successfully")
 	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"project": project})
 
 }

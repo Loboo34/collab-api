@@ -54,7 +54,7 @@ func main() {
 	r.HandleFunc("/project/{projectId}/update", handlers.UpdateProject).Methods("Put")
 	r.HandleFunc("/team/{teamId}/projects", handlers.GetProjects).Methods("Get")
 	r.HandleFunc("/project/{projectId}", handlers.GetProject).Methods("Get")
-	r.HandleFunc("/priject/{projectId}/delete", handlers.DeleteProject).Methods("Delete")
+	r.HandleFunc("/project/{projectId}", handlers.DeleteProject).Methods("Delete")
 
 	// tasks
 	r.HandleFunc("/create/task", handlers.CreateTask).Methods("Post")
