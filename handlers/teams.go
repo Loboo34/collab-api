@@ -59,8 +59,10 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	team := models.Team{
 		ID:        primitive.NewObjectID(),
 		Name:      request.Name,
+		Members: []string{userID},
 		CreatedBy: userID,
 		CreatedAt: time.Now(),
+		Projects: []primitive.ObjectID{},
 	}
 
 	membersCollection := database.DB.Collection("team-members")

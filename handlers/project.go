@@ -114,6 +114,7 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	_, err = teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$addToSet": bson.M{"projects": project.ID}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding project to teams", "")
+		return
 	}
 
 	utils.Logger.Info("Project Created Successfuly")
