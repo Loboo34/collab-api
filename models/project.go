@@ -12,4 +12,5 @@ type Project struct{
 	TeamId primitive.ObjectID `bson:"teamId" json:"teamId"`
 	CreatedBy string `bson:"createdBy" json:"createdBy"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdat"`
+	Tasks []string `bson:"tasks" json:"tasks"`
 }

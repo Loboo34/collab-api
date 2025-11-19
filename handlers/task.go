@@ -55,12 +55,18 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teamID, err := primitive.ObjectIDFromHex(request.TeamID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var team models.Team
 	teamCollection := database.DB.Collection("teams")
-	err = teamCollection.FindOne(ctx, bson.M{"_id": team.ID}).Decode(&team)
+	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Team Not Found", "")
@@ -70,28 +76,22 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	projectID, err := primitive.ObjectIDFromHex(request.ProjectID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
+		return
+	}
+
 	var project models.Project
 	projectCollection := database.DB.Collection("projects")
 
-	err = projectCollection.FindOne(ctx, bson.M{"_id": project.ID}).Decode(&project)
+	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Project Not Found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error Finding project", "")
 		}
-		return
-	}
-
-	teamID, err := primitive.ObjectIDFromHex(request.TeamID)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
-		return
-	}
-
-	projectID, err := primitive.ObjectIDFromHex(request.ProjectID)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
 		return
 	}
 
@@ -115,6 +115,13 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = projectCollection.UpdateOne(ctx, bson.M{"_id": projectID}, bson.M{"$addToSet": bson.M{"projects": task.ID}})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding task to project", "")
+		return
+	}
+
+	utils.Logger.Info("Task created successfully")
 	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userId})
 }
 
@@ -149,13 +156,13 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vars := mux.Vars(r)
-	taskIDStr := vars["id"]
+	taskIDStr := vars["taskId"]
 	if taskIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing Id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing task Id", "")
 		return
 	}
 
-	objectId, err := primitive.ObjectIDFromHex(taskIDStr)
+	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
 	if err != nil {
 		utils.Logger.Warn("Invalid id")
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid id format", "")
@@ -168,6 +175,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid json", "")
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -175,7 +183,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
-	err = taskCollection.FindOne(ctx, bson.M{"_id": objectId}).Decode(&task)
+	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Task not found", "")
@@ -210,7 +218,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := taskCollection.UpdateOne(ctx, bson.M{"_id": objectId}, update)
+	result, err := taskCollection.UpdateOne(ctx, bson.M{"_id": taskID}, update)
 	if err != nil {
 		utils.Logger.Warn("Failed to update task")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating Task", "")
@@ -223,6 +231,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	utils.Logger.Info("Task updated")
 	utils.RespondWithJSON(w, http.StatusOK, "Update successful", map[string]interface{}{"taskID": task})
 }
 

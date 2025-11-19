@@ -101,6 +101,7 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		TeamId:      teamID,
 		CreatedBy:   userID,
 		CreatedAt:   time.Now(),
+		Tasks:       []string{},
 	}
 
 	projectCollection := database.DB.Collection("projects")
@@ -501,8 +502,7 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-	utils.Logger.Info("Project fetched successfully")
+	utils.Logger.Info("Project fetched successfullyt")
 	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"project": project})
 
 }
