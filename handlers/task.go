@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -115,14 +116,14 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = projectCollection.UpdateOne(ctx, bson.M{"_id": projectID}, bson.M{"$addToSet": bson.M{"projects": task.ID}})
+	_, err = projectCollection.UpdateOne(ctx, bson.M{"_id": projectID}, bson.M{"$addToSet": bson.M{"tasks": task.ID}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding task to project", "")
 		return
 	}
 
 	utils.Logger.Info("Task created successfully")
-	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userId})
+	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userId, "task": task})
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
@@ -302,7 +303,7 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 	memberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = memberCollection.FindOne(ctx, bson.M{"user": body.AssignedTo, "team": task.TeamId}).Decode(&member)
+	err = memberCollection.FindOne(ctx, bson.M{"user": body.AssignedTo, "teamId": task.TeamId}).Decode(&member)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
@@ -657,11 +658,6 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
 
-	if member.TeamId != task.TeamId {
-		utils.RespondWithError(w, http.StatusForbidden, "You are not a member of this task's team", "")
-		return
-	}
-
 	err = taskCollection.FindOne(ctx, bson.M{"_id": taskID}).Decode(&task)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -669,6 +665,13 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding task", "")
 		}
+		return
+	}
+
+	fmt.Println("teamID", task.TeamId)
+	fmt.Println("mTeam", member.TeamId)
+	if member.TeamId != task.TeamId {
+		utils.RespondWithError(w, http.StatusForbidden, "You are not a member of this task's team", "")
 		return
 	}
 
