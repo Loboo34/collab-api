@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -319,7 +318,7 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	update := bson.M{"$set": bson.M{"assignedTo": assignedTOID}}
+	update := bson.M{"$set": bson.M{"assigned": assignedTOID}}
 	result, err := database.DB.Collection("tasks").UpdateOne(ctx, bson.M{"_id": taskID}, update)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error assining task", "")
@@ -330,6 +329,11 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to find task", "")
 		return
 	}
+	utils.Logger.Info("Tasked assigned successfully")
+	utils.RespondWithError(w, http.StatusOK, "Task assigned successfully", map[string]interface{}{
+		"taskID":     taskID.Hex(),
+		"assignedTo": body.AssignedTo,
+	})
 }
 
 func Status(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +356,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userIDStr, ok := claims["id"].(string)
+	userID, ok := claims["id"].(string)
 	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
 		return
@@ -405,7 +409,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 	teamMemberCollection := database.DB.Collection("team-members")
 	var member models.TeamMember
 
-	err = teamMemberCollection.FindOne(ctx, bson.M{"user": userIDStr, "team": task.TeamId}).Decode(&member)
+	err = teamMemberCollection.FindOne(ctx, bson.M{"user": userID, "teamId": task.TeamId}).Decode(&member)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
@@ -415,12 +419,12 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	userIDObj, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
 		return
 	}
-	if task.AssignedTo != userID {
+	if task.AssignedTo != userIDObj {
 		utils.RespondWithError(w, http.StatusBadRequest, "Task is not assigned to user", "")
 		return
 	}
@@ -619,7 +623,11 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := claims["id"].(string)
+	userID, ok := claims["id"].(string)
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
+		return
+	}
 
 	vars := mux.Vars(r)
 	taskIDStr := vars["taskId"]
@@ -637,24 +645,6 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	memberCollection := database.DB.Collection("team-members")
-	var member models.TeamMember
-
-	err = memberCollection.FindOne(ctx, bson.M{"user": userID}).Decode(&member)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "member not found", "")
-		} else {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
-		}
-		return
-	}
-
-	if userID != member.User {
-		utils.RespondWithError(w, http.StatusForbidden, "User must be part of team", "")
-		return
-	}
-
 	taskCollection := database.DB.Collection("tasks")
 	var task models.Task
 
@@ -668,13 +658,20 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("teamID", task.TeamId)
-	fmt.Println("mTeam", member.TeamId)
-	if member.TeamId != task.TeamId {
-		utils.RespondWithError(w, http.StatusForbidden, "You are not a member of this task's team", "")
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID, "teamId": task.TeamId}).Decode(&member)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"task": task})
+	utils.Logger.Info("Task fetched")
+	utils.RespondWithJSON(w, http.StatusOK, "Task fetched successfully", map[string]interface{}{"task": task})
 
 }

@@ -63,7 +63,7 @@ func main() {
 	r.HandleFunc("/task/{taskId}/status", handlers.Status).Methods("Put")
 	r.HandleFunc("/project/{projectId}/tasks", handlers.GetTasks).Methods("Get")
 	r.HandleFunc("/task/{taskId}", handlers.GetTask).Methods("Get")
-	r.HandleFunc("/task/{taskId}/delete", handlers.DeleteTask).Methods("Delete")
+	r.HandleFunc("/task/{taskId}", handlers.DeleteTask).Methods("Delete")
 
 	port := os.Getenv("PORT")
 	if port == "" {
