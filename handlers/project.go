@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
-	//"github.com/gorilla/mux"
-	//"go.mongodb.org/mongo-driver/bson"
+	
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
 	"github.com/Loboo34/collab-api/utils"
@@ -24,42 +22,15 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claim, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	userID, ok := claim["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User ID not found", "")
-		return
-	}
-
-	userRole, ok := claim["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User role not found", "")
-		return
-	}
-
-	if !strings.EqualFold(userRole, "Admin") {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User is not Admin", "")
 		return
 	}
 
 	var request struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
-		//TeamId      string `json:"teamId"`
-		//CreatedBy   string `json:"createdBy"`
 	}
 
 	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -128,34 +99,13 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	_, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
 		return
 	}
 
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Role", "")
-		return
-	}
-
 	vars := mux.Vars(r)
-
 	projectIDStr := vars["projectId"]
 	if projectIDStr == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing project id", "")
@@ -181,11 +131,6 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
 		}
-		return
-	}
-
-	if !strings.EqualFold(role, "Admin") && userID != project.CreatedBy {
-		utils.RespondWithError(w, http.StatusForbidden, "User Not authorized to perform action", "")
 		return
 	}
 
@@ -227,34 +172,9 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Ivalid Token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
-		return
-	}
-
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User Role", "")
-		return
-	}
-
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusForbidden, "User is not admin", "")
 		return
 	}
 
@@ -332,22 +252,8 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid toke", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user Id", "")
 		return
 	}
@@ -431,22 +337,8 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "invalid Token string", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing user ID", "")
 		return
 	}

@@ -23,22 +23,8 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenstring := r.Header.Get("Authorization")
-	if tokenstring == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "missing Auth token", "")
-		return
-	}
-
-	tokenstring = strings.TrimPrefix(tokenstring, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenstring)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
-		return
-	}
-
-	userId, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User id not found", "")
 		return
 	}
@@ -102,7 +88,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		Status:      "Pending",
 		TeamId:      teamID,
 		ProjectId:   projectID,
-		CreatedBy:   userId,
+		CreatedBy:   userID,
 		CreatedAt:   time.Now(),
 	}
 
@@ -122,7 +108,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Logger.Info("Task created successfully")
-	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userId, "task": task})
+	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userID, "task": task})
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
@@ -131,26 +117,14 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Token string", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
-	role, ok := claims["role"].(string)
-	if !ok {
+	role, err := utils.GetUserRole(r)
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
 		return
 	}
@@ -213,7 +187,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !strings.EqualFold(role, "Admin") && task.CreatedBy != userID {
+	if !strings.EqualFold(role, "Admin") || task.CreatedBy != userID {
 		utils.RespondWithError(w, http.StatusForbidden, "User Not allowed to perform action", "")
 		return
 	}
@@ -241,22 +215,8 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Mising token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	_, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	_, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
@@ -342,22 +302,8 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
 		return
 	}
@@ -454,28 +400,14 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Auth token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
-	role, ok := claims["role"].(string)
-	if !ok {
+	role, err := utils.GetUserRole(r)
+	if err != nil{
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
 		return
 	}
@@ -504,7 +436,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if task.CreatedBy != userID && role != "Admin" {
+	if task.CreatedBy != userID || role != "Admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "Not Permited to perform action", "")
 		return
 	}
@@ -530,21 +462,11 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token string", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
-
-	userID := claims["id"].(string)
 
 	vars := mux.Vars(r)
 	projectIDStr := vars["projectId"]
@@ -609,22 +531,8 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth Token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "invalid Token string", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
 		return
 	}

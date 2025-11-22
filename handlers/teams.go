@@ -5,9 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Loboo34/collab-api/database"
@@ -26,23 +25,9 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
-		http.Error(w, "User ID not found", http.StatusUnauthorized)
+		utils.RespondWithError(w, http.StatusUnauthorized, "User ID not found", "")
 		return
 	}
 
@@ -59,10 +44,10 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	team := models.Team{
 		ID:        primitive.NewObjectID(),
 		Name:      request.Name,
-		Members: []string{userID},
+		Members:   []string{userID},
 		CreatedBy: userID,
 		CreatedAt: time.Now(),
-		Projects: []primitive.ObjectID{},
+		Projects:  []primitive.ObjectID{},
 	}
 
 	membersCollection := database.DB.Collection("team-members")
@@ -106,36 +91,9 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userId , err:= utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	userId, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "user ID not found", "")
-		return
-	}
-
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User role not found", "")
-		return
-	}
-
-	fmt.Println("id:", userId)
-	fmt.Println("role:", role)
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusForbidden, "User is not admin", "")
 		return
 	}
 
@@ -148,7 +106,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req InveteRequest
-	if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
@@ -244,7 +202,6 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	utils.RespondWithJSON(w, http.StatusCreated, "Invitation sent successfully", map[string]interface{}{
 		"email":     user.Email,
 		"team_id":   teamObjId.Hex(),
@@ -265,22 +222,8 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "invalid JWT", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
 		return
 	}
@@ -288,7 +231,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	
 	inviteCollection := database.DB.Collection("invites")
 	var invite models.Invite
 	err = inviteCollection.FindOne(ctx, bson.M{"token": inviteToken}).Decode(&invite)
@@ -306,7 +248,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	userCollection := database.DB.Collection("users")
 	userObjID, _ := primitive.ObjectIDFromHex(userID)
 	var user models.User
@@ -320,7 +261,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusForbidden, "This invite is for a different user", "")
 		return
 	}
-
 
 	membersCollection := database.DB.Collection("team-members")
 	newMember := models.TeamMember{
@@ -338,7 +278,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	_, err = userCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": userObjID},
@@ -348,7 +287,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		utils.Logger.Warn("Failed to update user teams")
 	}
 
-	
 	teamCollection := database.DB.Collection("teams")
 	_, err = teamCollection.UpdateOne(
 		ctx,
@@ -359,7 +297,6 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		utils.Logger.Warn("Failed to update team members")
 	}
 
-	
 	_, err = inviteCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": invite.ID},
@@ -388,22 +325,8 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token String", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusNotFound, "Id Not found", "")
 		return
 	}
@@ -416,7 +339,6 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 	inviteCollection := database.DB.Collection("invites")
 	var invite models.Invite
 
-	
 	err = inviteCollection.FindOne(ctx, bson.M{"token": inviteToken}).Decode(&invite)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -448,22 +370,8 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
 		return
 	}
@@ -536,135 +444,15 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, "", map[string]interface{}{"members": members})
 }
 
-func DeleteTeam(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
-		return
-	}
-
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusNotFound, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid token", "")
-		return
-	}
-
-	userID, ok := claims["id"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
-		return
-	}
-
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing role", "")
-		return
-	}
-
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin can Perform Action", "")
-		return
-	}
-
-	vars := mux.Vars(r)
-	teamIDStr := vars["teamId"]
-	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team id", "")
-		return
-	}
-
-	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid teamID", "")
-		return
-	}
-
-	var team models.Team
-	teamCollection := database.DB.Collection("teams")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
-		} else {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
-		}
-		return
-	}
-
-	result, err := teamCollection.DeleteOne(ctx, bson.M{"_id": teamID})
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete Team", "")
-		return
-	}
-
-	if result.DeletedCount == 0 {
-		utils.RespondWithError(w, http.StatusNotFound, "Team Not found", "")
-		return
-	}
-
-	membersCollection := database.DB.Collection("team-members")
-	_, err = membersCollection.DeleteMany(ctx, bson.M{"teamId": teamID})
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Failled to dalete team members", "")
-		return
-	}
-
-	inviteCollection := database.DB.Collection("invites")
-	_, err = inviteCollection.DeleteMany(ctx, bson.M{"teamId": teamID})
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete invitations", "")
-		return
-	}
-
-	utils.Logger.Info("Deleted Team")
-	utils.RespondWithJSON(w, http.StatusOK, "Team successfuly deleted", map[string]interface{}{"Team deleted by": userID, "team": team})
-}
-
 func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Put Allowed", "")
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Token String", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
+	_, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Token", "")
-		return
-	}
-
-	_, ok := claims["id"].(string)
-	if !ok {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing ID", "")
-		return
-	}
-
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin is allowed", "")
-		return
-	}
-
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Only admin is allowed", "")
 		return
 	}
 
@@ -685,12 +473,10 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		MemberID string `json:"memberId"`
 		Role     string `json:"role"`
 	}
-	if err = json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json", "")
 		return
 	}
-
-	
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -740,34 +526,9 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
-		return
-	}
-
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	claims, err := utils.ValidateJWT(tokenString)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "invalid token", "")
-		return
-	}
-
-	_, ok := claims["id"].(string)
-	if !ok {
+	_, err := utils.GetUserID(r)
+	if err != nil  {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
-		return
-	}
-
-	role, ok := claims["role"].(string)
-	if !ok {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing role", "")
-		return
-	}
-
-	if !strings.EqualFold(role, "Admin") {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Only Admin Can perform Action", "")
 		return
 	}
 
@@ -775,7 +536,7 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		User string `json:"user"`
 	}
 
-	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
@@ -859,4 +620,74 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		"team_id":   teamID.Hex(),
 		"member_id": request.User,
 	})
+}
+
+func DeleteTeam(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		return
+	}
+
+	userID, err := utils.GetUserID(r)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
+		return
+	}
+
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
+	if teamIDStr == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team id", "")
+		return
+	}
+
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid teamID", "")
+		return
+	}
+
+	var team models.Team
+	teamCollection := database.DB.Collection("teams")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding Team", "")
+		}
+		return
+	}
+
+	result, err := teamCollection.DeleteOne(ctx, bson.M{"_id": teamID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete Team", "")
+		return
+	}
+
+	if result.DeletedCount == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "Team Not found", "")
+		return
+	}
+
+	membersCollection := database.DB.Collection("team-members")
+	_, err = membersCollection.DeleteMany(ctx, bson.M{"teamId": teamID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failled to dalete team members", "")
+		return
+	}
+
+	inviteCollection := database.DB.Collection("invites")
+	_, err = inviteCollection.DeleteMany(ctx, bson.M{"teamId": teamID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete invitations", "")
+		return
+	}
+
+	utils.Logger.Info("Deleted Team")
+	utils.RespondWithJSON(w, http.StatusOK, "Team successfuly deleted", map[string]interface{}{"Team deleted by": userID, "team": team})
 }

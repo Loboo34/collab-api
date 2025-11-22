@@ -41,29 +41,31 @@ func main() {
 	r.HandleFunc("/login", handlers.LoginUser).Methods("POST")
 
 	// teams
-	r.HandleFunc("/team/create", handlers.CreateTeam).Methods("Post")
-	r.HandleFunc("/team/invite", handlers.InviteMember).Methods("Post")
-	r.HandleFunc("/invite/accept", handlers.AcceptInvite).Methods("Post")
-	// r.HandleFunc("/invite/Decline", handlers.DeclineInvite).Methods("Post")
-	r.HandleFunc("/team/{teamId}/members", handlers.GetTeamMembers).Methods("Get")
-	r.HandleFunc("/team/{teamId}", handlers.DeleteTeam).Methods("Delete")
-	r.HandleFunc("/team/{teamId}/remove", handlers.RemoveMember).Methods("Delete")
+	r.HandleFunc("/team/create", middleware.CheckAuth(handlers.CreateTeam)).Methods("Post")
+	r.HandleFunc("/team/invite", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.InviteMember))).Methods("Post")
+	r.HandleFunc("/invite/accept", middleware.CheckAuth(handlers.AcceptInvite)).Methods("Post")
+	r.HandleFunc("/invite/Decline", middleware.CheckAuth(handlers.DeclineInvite)).Methods("Post")
+	r.HandleFunc("/team/{teamId}/members", middleware.CheckAuth(handlers.GetTeamMembers)).Methods("Get")
+	r.HandleFunc("/team/{teamId}/", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.ChangeRole)))
+	r.HandleFunc("/team/{teamId}/remove", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.RemoveMember))).Methods("Delete")
+	r.HandleFunc("/team/{teamId}", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.DeleteTeam))).Methods("Delete")
+
 
 	// project
-	r.HandleFunc("/project/create/{teamId}", handlers.CreateProject).Methods("Post")
-	r.HandleFunc("/project/{projectId}/update", handlers.UpdateProject).Methods("Put")
-	r.HandleFunc("/team/{teamId}/projects", handlers.GetProjects).Methods("Get")
-	r.HandleFunc("/project/{projectId}", handlers.GetProject).Methods("Get")
-	r.HandleFunc("/project/{projectId}", handlers.DeleteProject).Methods("Delete")
+	r.HandleFunc("/project/create/{teamId}", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.CreateProject))).Methods("Post")
+	r.HandleFunc("/project/{projectId}/update", middleware.CheckAuth(middleware.CheckRole("Admin",handlers.UpdateProject))).Methods("Put")
+	r.HandleFunc("/team/{teamId}/projects", middleware.CheckAuth(handlers.GetProjects)).Methods("Get")
+	r.HandleFunc("/project/{projectId}", middleware.CheckAuth(handlers.GetProject)).Methods("Get")
+	r.HandleFunc("/project/{projectId}", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.DeleteProject))).Methods("Delete")
 
 	// tasks
-	r.HandleFunc("/create/task", handlers.CreateTask).Methods("Post")
-	r.HandleFunc("/task/{taskId}/update", handlers.UpdateTask).Methods("Put")
-	r.HandleFunc("/task/{taskId}/assign", handlers.AssignTo).Methods("Post")
-	r.HandleFunc("/task/{taskId}/status", handlers.Status).Methods("Put")
-	r.HandleFunc("/project/{projectId}/tasks", handlers.GetTasks).Methods("Get")
-	r.HandleFunc("/task/{taskId}", handlers.GetTask).Methods("Get")
-	r.HandleFunc("/task/{taskId}", handlers.DeleteTask).Methods("Delete")
+	r.HandleFunc("/task/create", middleware.CheckAuth(handlers.CreateTask)).Methods("Post")
+	r.HandleFunc("/task/{taskId}/update", middleware.CheckAuth(handlers.UpdateTask)).Methods("Put")
+	r.HandleFunc("/task/{taskId}/assign", middleware.CheckAuth(handlers.AssignTo)).Methods("Post")
+	r.HandleFunc("/task/{taskId}/status", middleware.CheckAuth(handlers.Status)).Methods("Put")
+	r.HandleFunc("/project/{projectId}/tasks", middleware.CheckAuth(handlers.GetTasks)).Methods("Get")
+	r.HandleFunc("/task/{taskId}", middleware.CheckAuth(handlers.GetTask)).Methods("Get")
+	r.HandleFunc("/task/{taskId}", middleware.CheckAuth(handlers.DeleteTask)).Methods("Delete")
 
 	port := os.Getenv("PORT")
 	if port == "" {
