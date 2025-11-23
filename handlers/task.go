@@ -19,13 +19,13 @@ import (
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User id not found", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
@@ -43,7 +43,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	teamID, err := primitive.ObjectIDFromHex(request.TeamID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -55,7 +55,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Team Not Found", "")
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error Finding team", "")
 		}
@@ -64,7 +64,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	projectID, err := primitive.ObjectIDFromHex(request.ProjectID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid teamID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -74,9 +74,9 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Project Not Found", "")
+			utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
 		} else {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error Finding project", "")
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
 		}
 		return
 	}
@@ -103,9 +103,17 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	_, err = projectCollection.UpdateOne(ctx, bson.M{"_id": projectID}, bson.M{"$addToSet": bson.M{"tasks": task.ID}})
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding task to project", "")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error adding task to project", "")
 		return
 	}
+
+		utils.Log(r.Context(),
+		userID,
+		"",
+		"",
+		task.ID.Hex(),
+		"Create Task",
+		userID+"Created '"+task.Title)
 
 	utils.Logger.Info("Task created successfully")
 	utils.RespondWithJSON(w, http.StatusCreated, "Task added successfully", map[string]interface{}{"user": userID, "task": task})
@@ -125,21 +133,21 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	role, err := utils.GetUserRole(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User Role", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	taskIDStr := vars["taskId"]
 	if taskIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing task Id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
 		return
 	}
 
 	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
 	if err != nil {
 		utils.Logger.Warn("Invalid id")
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid id format", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Task ID ", "")
 		return
 	}
 
@@ -148,7 +156,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 	}
 	if err = json.NewDecoder(r.Body).Decode(&updates); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid json", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid json format", "")
 		return
 	}
 
@@ -188,7 +196,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !strings.EqualFold(role, "Admin") || task.CreatedBy != userID {
-		utils.RespondWithError(w, http.StatusForbidden, "User Not allowed to perform action", "")
+		utils.RespondWithError(w, http.StatusForbidden, "User not allowed to perform action", "")
 		return
 	}
 
@@ -205,17 +213,25 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+		utils.Log(r.Context(),
+		userID,
+		"",
+		"",
+		taskIDStr,
+		"Update Task",
+		userID+"Updated task:'"+taskIDStr)
+
 	utils.Logger.Info("Task updated")
 	utils.RespondWithJSON(w, http.StatusOK, "Update successful", map[string]interface{}{"taskID": task})
 }
 
 func AssignTo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
-	_, err := utils.GetUserID(r)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
@@ -224,13 +240,13 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	taskIDStr := vars["taskId"]
 	if taskIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
 		return
 	}
 
 	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task ID", "")
 		return
 	}
 
@@ -289,6 +305,16 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to find task", "")
 		return
 	}
+
+		utils.Log(r.Context(),
+		userID,
+		"",
+		"",
+		taskIDStr,
+		"Assign Task",
+		userID+"Assigned task: '"+taskIDStr+"to"+body.AssignedTo)
+
+
 	utils.Logger.Info("Tasked assigned successfully")
 	utils.RespondWithError(w, http.StatusOK, "Task assigned successfully", map[string]interface{}{
 		"taskID":     taskID.Hex(),
@@ -304,20 +330,20 @@ func Status(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	taskIDStr := vars["taskId"]
 	if taskIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing task ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Task ID", "")
 		return
 	}
 
 	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid taskID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Task ID", "")
 		return
 	}
 
@@ -326,7 +352,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = json.NewDecoder(r.Body).Decode(&body); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Json Format", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
 
@@ -367,7 +393,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 
 	userIDObj, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid user ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid User ID", "")
 		return
 	}
 	if task.AssignedTo != userIDObj {
@@ -385,6 +411,14 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
 		return
 	}
+	utils.Log(r.Context(),
+		userID,
+		"",
+		"",
+		taskIDStr,
+		"Update status",
+		userID+"updated '"+taskIDStr+"status to'"+body.Status)
+
 
 	utils.Logger.Info("Task Status Updated Successfuly")
 	utils.RespondWithJSON(w, http.StatusOK, "Status Update successfully", map[string]interface{}{
@@ -396,7 +430,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 
 func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only DELETE Allowed", "")
 		return
 	}
 
@@ -408,7 +442,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	role, err := utils.GetUserRole(r)
 	if err != nil{
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User role", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User Role", "")
 		return
 	}
 
@@ -451,6 +485,13 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
 		return
 	}
+	utils.Log(r.Context(),
+		userID,
+		"",
+		"",
+		taskIDStr,
+		"Delete Task",
+		userID+"Deleted '"+taskIDStr)
 
 	utils.Logger.Info("Task deleted successfuly")
 	utils.RespondWithJSON(w, http.StatusOK, "Task Deleted", "")
@@ -458,7 +499,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 func GetTasks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Method not Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowed", "")
 		return
 	}
 
@@ -527,13 +568,13 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 
 func GetTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only get Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
@@ -546,7 +587,7 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 
 	taskID, err := primitive.ObjectIDFromHex(taskIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Task ID", "")
 		return
 	}
 

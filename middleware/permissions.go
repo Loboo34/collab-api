@@ -31,7 +31,7 @@ func CheckAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		role, ok := claims["role"].(string)
 		if !ok {
-			utils.RespondWithError(w, http.StatusUnauthorized, "Invalid user role", "")
+			utils.RespondWithError(w, http.StatusUnauthorized, "Invalid User Role", "")
 			return
 		}
 

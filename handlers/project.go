@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	
 	"github.com/Loboo34/collab-api/database"
 	"github.com/Loboo34/collab-api/models"
 	"github.com/Loboo34/collab-api/utils"
@@ -18,13 +17,13 @@ import (
 
 func CreateProject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "User ID not found", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
@@ -34,7 +33,7 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invlaid Json", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invlaid Json format", "")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -43,13 +42,13 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 	var team models.Team
@@ -89,6 +88,14 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	utils.Log(r.Context(),
+		userID,
+		teamIDStr,
+		project.ID.Hex(),
+		"",
+		"Created Project",
+		userID+"Created '"+project.Name)
+
 	utils.Logger.Info("Project Created Successfuly")
 	utils.RespondWithJSON(w, http.StatusCreated, "Project created successful", map[string]string{"projectID": project.ID.Hex(), "name": project.Name})
 }
@@ -99,22 +106,22 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := utils.GetUserID(r)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user ID", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	projectIDStr := vars["projectId"]
 	if projectIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing project id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Project ID", "")
 		return
 	}
 
 	projectID, err := primitive.ObjectIDFromHex(projectIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Project id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Project ID", "")
 		return
 	}
 
@@ -127,7 +134,7 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Project Not found", "")
+			utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
 		}
@@ -162,32 +169,40 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	utils.Log(r.Context(),
+		userID,
+		"",
+		projectIDStr,
+		"",
+		"Update Project",
+		userID+"Updated '"+projectIDStr)
+
 	utils.Logger.Info("Project updated successfuly")
 	utils.RespondWithJSON(w, http.StatusOK, "Project updated", map[string]interface{}{"projectID": project.ID, "name": updates.Name})
 }
 
 func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Delete Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only DELETE Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	projectIDStr := vars["projectId"]
 	if projectIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "mising project id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "mising Project ID", "")
 		return
 	}
 
 	projectID, err := primitive.ObjectIDFromHex(projectIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid project id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Project ID", "")
 		return
 	}
 
@@ -200,7 +215,7 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	err = projectCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Project Not found", "")
+			utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding project", "")
 		}
@@ -219,7 +234,7 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.DeletedCount == 0 {
-		utils.RespondWithError(w, http.StatusNotFound, "Project not Found", "")
+		utils.RespondWithError(w, http.StatusNotFound, "Project not found", "")
 		return
 	}
 
@@ -242,32 +257,40 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	utils.Log(r.Context(),
+		userID,
+		"",
+		projectIDStr,
+		"",
+		"Delete",
+		userID+"Deleted '"+projectIDStr)
+
 	utils.Logger.Info("Project deleted successfuly")
 	utils.RespondWithError(w, http.StatusOK, "Project deleted", map[string]interface{}{"Project": projectID, "user": userID})
 }
 
 func GetProjects(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Get Allowe", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowe", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing user Id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -293,7 +316,7 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			utils.RespondWithError(w, http.StatusNotFound, "Team Not found", "")
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding team", "")
 		}
@@ -333,13 +356,13 @@ func GetProjects(w http.ResponseWriter, r *http.Request) {
 
 func GetProject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only get Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing user ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing User ID", "")
 		return
 	}
 
@@ -352,7 +375,7 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 
 	projectID, err := primitive.ObjectIDFromHex(projectIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid task ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Task ID", "")
 		return
 	}
 

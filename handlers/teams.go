@@ -21,7 +21,7 @@ import (
 
 func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
@@ -35,7 +35,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
 
@@ -76,7 +76,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	_, err = membersCollection.InsertOne(ctx, members)
 	if err != nil {
 		utils.Logger.Warn("Failed to create team admin")
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error saving admin", "")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error saving Admin", "")
 	}
 
 	_, err = userCollection.UpdateOne(ctx, bson.M{"_id": userObjID}, bson.M{"$addToSet": bson.M{"teams": team.ID}})
@@ -87,13 +87,13 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 func InviteMember(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
 	userId , err:= utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "user ID not found", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "User ID not found", "")
 		return
 	}
 
@@ -113,7 +113,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 
 	teamObjId, err := primitive.ObjectIDFromHex(req.TeamId)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -166,7 +166,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 
 	err = inviteCollection.FindOne(ctx, bson.M{"email": user.Email, "teamId": teamObjId, "status": "pending"}).Decode(&existingInvite)
 	if err == nil {
-		utils.RespondWithError(w, http.StatusConflict, "invite Already exists", "")
+		utils.RespondWithError(w, http.StatusConflict, "Invite already exists", "")
 		return
 	}
 
@@ -212,7 +212,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 
 func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
@@ -224,7 +224,7 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
@@ -315,7 +315,7 @@ func AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowe", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
 		return
 	}
 
@@ -327,7 +327,7 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "Id Not found", "")
+		utils.RespondWithError(w, http.StatusNotFound, "Missing User ID", "")
 		return
 	}
 
@@ -366,26 +366,26 @@ func DeclineInvite(w http.ResponseWriter, r *http.Request) {
 
 func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Get Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing team ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid team Id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -446,26 +446,26 @@ func GetTeamMembers(w http.ResponseWriter, r *http.Request) {
 
 func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Put Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only PUT Allowed", "")
 		return
 	}
 
-	_, err := utils.GetUserID(r)
+	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing ID", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing team ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid Team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -474,7 +474,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
 
@@ -516,6 +516,15 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	utils.Log(r.Context(),
+	userID,
+	teamIDStr,
+	"",
+	"",
+	"Changed Role",
+	userID+"Changed'"+body.MemberID+"' role to "+body.Role,
+)
+
 	utils.Logger.Info("Changed users role successfully")
 	utils.RespondWithJSON(w, http.StatusOK, "Role changed successfuly", map[string]interface{}{"user": member.ID, "role": body.Role})
 }
@@ -526,9 +535,9 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := utils.GetUserID(r)
+ userID, err := utils.GetUserID(r)
 	if err != nil  {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
@@ -544,13 +553,13 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Error getting team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Error getting Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid team ID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
@@ -615,6 +624,15 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	}
 
+	utils.Log(r.Context(),
+	userID,
+	teamIDStr,
+	"",
+	"",
+	"Removed Member",
+	userID+"Removed '"+request.User+"' from team",
+)
+
 	utils.Logger.Info("User successfully removed from team")
 	utils.RespondWithJSON(w, http.StatusOK, "Member removed successfully", map[string]interface{}{
 		"team_id":   teamID.Hex(),
@@ -630,20 +648,20 @@ func DeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing Id", "")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	vars := mux.Vars(r)
 	teamIDStr := vars["teamId"]
 	if teamIDStr == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team id", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid teamID", "")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid Team ID", "")
 		return
 	}
 
