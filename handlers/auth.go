@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/Loboo34/collab-api/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func RegisterUser(w http.ResponseWriter, r *http.Request) {
@@ -19,34 +21,47 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user models.User
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	var req struct {
+		FullName string `json:"fullname"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	fmt.Println(req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.Logger.Warn("Invalid SJon")
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON format", "")
 		return
 	}
 
-	hashed, err := utils.HashPassword(user.Password)
+	hashedPass, err := utils.HashPassword(req.Password)
 	if err != nil {
 		utils.Logger.Warn("Failed to hash Passwordf")
 		utils.RespondWithError(w, http.StatusBadRequest, "Error Hashing password", "")
 		return
 	}
-	user.Password = hashed
 
+	newUser := models.User{
+		ID:        primitive.NewObjectID(),
+		FullName:  req.FullName,
+		Email:     req.Email,
+		Password:  hashedPass,
+		CreatedAt: time.Now(),
+		Teams:     []primitive.ObjectID{},
+	}
+fmt.Println(newUser)
 	collection := database.DB.Collection("users")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err = collection.InsertOne(ctx, user)
+	_, err = collection.InsertOne(ctx, newUser)
 	if err != nil {
 		utils.Logger.Warn("Failed to Register User")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error while regestering new user", "")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated,"Regestration successfull", map[string]string{"message": "User registered Successfuly"})
+	utils.RespondWithJSON(w, http.StatusCreated, "Regestration successfull", map[string]interface{}{"message": "User registered Successfuly"})
 
 }
 
@@ -75,7 +90,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !utils.ComparePassword(user.Password, exists.Password){
+	if !utils.ComparePassword(user.Password, exists.Password) {
 		utils.Logger.Warn("Incorrect password")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid Credentials", "")
 		return
@@ -90,13 +105,12 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		role = member.Role
 	}
 
-token, err := utils.GenerateJWT(exists.ID.Hex(),exists.Email, role)
-if err != nil{
-	utils.RespondWithError(w, http.StatusInternalServerError, "Failed to login", "")
-	return
-}
+	token, err := utils.GenerateJWT(exists.ID.Hex(), exists.Email, role)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to login", "")
+		return
+	}
 
-utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]string{"token": token})
-
+	utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]string{"token": token})
 
 }

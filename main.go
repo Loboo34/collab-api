@@ -35,10 +35,14 @@ func main() {
 		log.Fatal("Failed to initialize JWT:", err)
 	}
 
+	r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+})
+
 	//handlers
 	//auth
-	r.HandleFunc("/register", handlers.RegisterUser).Methods("POST")
-	r.HandleFunc("/login", handlers.LoginUser).Methods("POST")
+	r.HandleFunc("/auth/register", handlers.RegisterUser).Methods("POST")
+	r.HandleFunc("/auth/login", handlers.LoginUser).Methods("POST")
 
 	// teams
 	r.HandleFunc("/team/create", middleware.CheckAuth(handlers.CreateTeam)).Methods("Post")

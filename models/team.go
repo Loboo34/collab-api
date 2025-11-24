@@ -9,6 +9,7 @@ import (
 type Team struct{
 	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name string `bson:"name" json:"name"`
+	Description string `bson:"description" json:"description"`
 	Members []string `bson:"members" json:"members"`
 	CreatedBy string  `bson:"createdby" json:"createdby"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`

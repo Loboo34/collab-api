@@ -33,6 +33,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	var request struct {
 		Name string `json:"name"`
+		Description string `json:"description"`
 	}
 	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
@@ -44,6 +45,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	team := models.Team{
 		ID:        primitive.NewObjectID(),
 		Name:      request.Name,
+		Description: request.Description,
 		Members:   []string{userID},
 		CreatedBy: userID,
 		CreatedAt: time.Now(),
