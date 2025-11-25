@@ -32,7 +32,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
 	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -43,13 +43,13 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 	teamCollection := database.DB.Collection("teams")
 
 	team := models.Team{
-		ID:        primitive.NewObjectID(),
-		Name:      request.Name,
+		ID:          primitive.NewObjectID(),
+		Name:        request.Name,
 		Description: request.Description,
-		Members:   []string{userID},
-		CreatedBy: userID,
-		CreatedAt: time.Now(),
-		Projects:  []primitive.ObjectID{},
+		Members:     []string{userID},
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
+		Projects:    []primitive.ObjectID{},
 	}
 
 	membersCollection := database.DB.Collection("team-members")
@@ -93,7 +93,7 @@ func InviteMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userId , err:= utils.GetUserID(r)
+	userId, err := utils.GetUserID(r)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User ID not found", "")
 		return
@@ -519,16 +519,70 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Log(r.Context(),
-	userID,
-	teamIDStr,
-	"",
-	"",
-	"Changed Role",
-	userID+"Changed'"+body.MemberID+"' role to "+body.Role,
-)
+		userID,
+		teamIDStr,
+		"",
+		"",
+		"Changed Role",
+		userID+"Changed'"+body.MemberID+"' role to "+body.Role,
+	)
 
 	utils.Logger.Info("Changed users role successfully")
 	utils.RespondWithJSON(w, http.StatusOK, "Role changed successfuly", map[string]interface{}{"user": member.ID, "role": body.Role})
+}
+
+func GetTeams(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only GET Allowed", "")
+		return
+	}
+
+	userID, err := utils.GetUserID(r)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	teamsCollection := database.DB.Collection("teams")
+	cursor, err := teamsCollection.Find(ctx, bson.M{"members": userID})
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error finding teams", "")
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var teams []models.Team
+	for cursor.Next(ctx) {
+		var team models.Team
+		if err := cursor.Decode(&team); err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding team", "")
+			return
+		}
+		teams = append(teams, team)
+	}
+
+	if err = cursor.Err(); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Cursor error", "")
+		return
+	}
+
+	
+	if len(teams) == 0 {
+		utils.RespondWithJSON(w, http.StatusOK, "No teams found", map[string]interface{}{
+			"teams": []models.Team{},
+			"count": 0,
+		})
+		return
+	}
+
+	utils.Logger.Info("Fetched user teams successfully")
+	utils.RespondWithJSON(w, http.StatusOK, "Teams retrieved successfully", map[string]interface{}{
+		"teams": teams,
+		"count": len(teams),
+	})
 }
 
 func RemoveMember(w http.ResponseWriter, r *http.Request) {
@@ -537,8 +591,8 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
- userID, err := utils.GetUserID(r)
-	if err != nil  {
+	userID, err := utils.GetUserID(r)
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
@@ -627,13 +681,13 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Log(r.Context(),
-	userID,
-	teamIDStr,
-	"",
-	"",
-	"Removed Member",
-	userID+"Removed '"+request.User+"' from team",
-)
+		userID,
+		teamIDStr,
+		"",
+		"",
+		"Removed Member",
+		userID+"Removed '"+request.User+"' from team",
+	)
 
 	utils.Logger.Info("User successfully removed from team")
 	utils.RespondWithJSON(w, http.StatusOK, "Member removed successfully", map[string]interface{}{
