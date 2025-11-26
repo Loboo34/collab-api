@@ -87,6 +87,41 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		"name": team.Name})
 }
 
+func UpdateTeam(w http.ResponseWriter, r *http.Request){
+	if r.Method != http.MethodPut {
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only PUT Allowed", "")
+		return
+	}
+
+	userID, err := utils.GetUserID(r)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
+		return
+	}
+
+	vars := mux.Vars(r)
+	teamID := vars["teamId"]
+	if teamID == ""{
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
+		return
+	}
+
+
+	var req struct {
+		Name string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+
+
+}
+
 func InviteMember(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only POST Allowed", "")
