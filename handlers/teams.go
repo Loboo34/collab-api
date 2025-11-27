@@ -31,11 +31,11 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request struct {
+	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
-	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+	if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid json format", "")
 		return
 	}
@@ -44,12 +44,12 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	team := models.Team{
 		ID:          primitive.NewObjectID(),
-		Name:        request.Name,
-		Description: request.Description,
+		Name:        req.Name,
+		Description: req.Description,
 		Members:     []string{userID},
 		CreatedBy:   userID,
 		CreatedAt:   time.Now(),
-		Projects:    []primitive.ObjectID{},
+		Projects:    []string{},
 	}
 
 	membersCollection := database.DB.Collection("team-members")
@@ -87,7 +87,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 		"name": team.Name})
 }
 
-func UpdateTeam(w http.ResponseWriter, r *http.Request){
+func UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only PUT Allowed", "")
 		return
@@ -101,14 +101,13 @@ func UpdateTeam(w http.ResponseWriter, r *http.Request){
 
 	vars := mux.Vars(r)
 	teamID := vars["teamId"]
-	if teamID == ""{
+	if teamID == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing Team ID", "")
 		return
 	}
 
-
 	var req struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -118,7 +117,52 @@ func UpdateTeam(w http.ResponseWriter, r *http.Request){
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	teamCollection := database.DB.Collection("teams")
+	var team models.Team
 
+	err = teamCollection.FindOne(ctx, bson.M{"_id": teamID}).Decode(&team)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding team", "")
+		}
+		return
+	}
+
+	memberCollection := database.DB.Collection("team-members")
+	var member models.TeamMember
+
+	err = memberCollection.FindOne(ctx, bson.M{"user": userID, "teamId": teamID}).Decode(&member)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.RespondWithError(w, http.StatusNotFound, "Member not found", "")
+		} else {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding member", "")
+		}
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"name":        req.Name,
+			"description": req.Description,
+		},
+	}
+
+	result, err := teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, update)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error updating Team", "")
+		return
+	}
+
+	if result.MatchedCount == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "Team not found", "")
+		return
+	}
+
+	utils.Logger.Info("Team Updated")
+	utils.RespondWithJSON(w, http.StatusOK, "Update Seccessful", map[string]interface{}{"team": update})
 
 }
 
@@ -604,7 +648,6 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	if len(teams) == 0 {
 		utils.RespondWithJSON(w, http.StatusOK, "No teams found", map[string]interface{}{
 			"teams": []models.Team{},

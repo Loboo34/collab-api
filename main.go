@@ -46,9 +46,11 @@ func main() {
 
 	// teams
 	r.HandleFunc("/team/create", middleware.CheckAuth(handlers.CreateTeam)).Methods("Post")
+	r.HandleFunc("/team/{teamId}/update", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.UpdateTeam))).Methods("PUT")
 	r.HandleFunc("/team/invite", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.InviteMember))).Methods("Post")
 	r.HandleFunc("/invite/accept", middleware.CheckAuth(handlers.AcceptInvite)).Methods("Post")
 	r.HandleFunc("/invite/Decline", middleware.CheckAuth(handlers.DeclineInvite)).Methods("Post")
+	r.HandleFunc("/teams", middleware.CheckAuth(handlers.GetTeams)).Methods("GET")
 	r.HandleFunc("/team/{teamId}/members", middleware.CheckAuth(handlers.GetTeamMembers)).Methods("Get")
 	r.HandleFunc("/team/{teamId}/", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.ChangeRole)))
 	r.HandleFunc("/team/{teamId}/remove", middleware.CheckAuth(middleware.CheckRole("Admin", handlers.RemoveMember))).Methods("Delete")

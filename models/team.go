@@ -13,5 +13,5 @@ type Team struct{
 	Members []string `bson:"members" json:"members"`
 	CreatedBy string  `bson:"createdby" json:"createdby"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
-	Projects []primitive.ObjectID `bson:"projects" json:"projects"`
+	Projects []string `bson:"projects" json:"projects"`
 }
