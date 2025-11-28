@@ -52,16 +52,27 @@ func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 	}
 
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		  if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, errors.New("unexpected signing method")
+        }
 		return jwtKey, nil
 	})
 
-	if err != nil || token == nil{
+	if err != nil {
+		return nil, errors.New("Invalid Token")
+	}
+
+	if token == nil {
+		return nil, errors.New("Invalid tokEn")
+	}
+	if !token.Valid {
 		return nil, errors.New("Invalid token")
 	}
 
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return claims, nil
+	claims, ok := token.Claims.(jwt.MapClaims); 
+	if !ok {
+		return nil, errors.New("Invalid Claims format")
 	}
 
-	return nil, err
+	return claims, nil
 }

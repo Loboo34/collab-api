@@ -8,11 +8,20 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func ExtractToken(r *http.Request) string {
+func ExtractToken(r *http.Request) (string, error ){
 	tokenString := r.Header.Get("Authorization")
+	if tokenString == ""{
+		return "", errors.New("Missing token string")
+	}
+
 
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-	return tokenString
+	tokenString = strings.TrimSpace(tokenString)
+
+	if tokenString == ""{
+		return  "", errors.New("Token empty after trim")
+	}
+	return tokenString, nil
 }
 
 func GetClaims(r *http.Request) jwt.MapClaims {

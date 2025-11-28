@@ -8,19 +8,28 @@ import (
 	"github.com/Loboo34/collab-api/utils"
 )
 
-
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func CheckAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		token := utils.ExtractToken(r)
-		if token == ""{
+		token, err := utils.ExtractToken(r)
+		if err != nil {
+			utils.Logger.Warn("Auth token Not found: " + err.Error())
 			utils.RespondWithError(w, http.StatusUnauthorized, "Missing Auth token", "")
 			return
 		}
-		
+
+		utils.Logger.Info("Token: " + token[:min(50, len(token))] + "...")
+
 		claims, err := utils.ValidateJWT(token)
 		if err != nil {
+			utils.Logger.Warn("JWT validation failed" + err.Error())
 			utils.RespondWithError(w, http.StatusUnauthorized, "Invalid Auth Token", "")
 			return
 		}
@@ -29,7 +38,6 @@ func CheckAuth(next http.HandlerFunc) http.HandlerFunc {
 			utils.RespondWithError(w, http.StatusUnauthorized, "Invalid User ID", "")
 			return
 		}
-		
 
 		role, ok := claims["role"].(string)
 		if !ok {
@@ -63,5 +71,3 @@ func CheckRole(userRole string, next http.HandlerFunc) http.HandlerFunc {
 
 	}
 }
-
-

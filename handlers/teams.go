@@ -83,6 +83,7 @@ func CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	_, err = userCollection.UpdateOne(ctx, bson.M{"_id": userObjID}, bson.M{"$addToSet": bson.M{"teams": team.ID}})
 
+	utils.Logger.Info("Team created successfully")
 	utils.RespondWithJSON(w, http.StatusCreated, "Team created Successfully", map[string]interface{}{"team_id": team.ID.Hex(),
 		"name": team.Name})
 }

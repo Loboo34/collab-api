@@ -68,12 +68,15 @@ fmt.Println(newUser)
 
 func LoginUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "On;y Post Allowed", "")
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Post Allowed", "")
 		return
 	}
 
-	var user models.User
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	var req struct{
+		Email string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON format", "")
 		return
 	}
@@ -83,17 +86,17 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var exists models.User
-	err := collection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&exists)
+	var user models.User
+	err := collection.FindOne(ctx, bson.M{"email": req.Email}).Decode(&user)
 	if err != nil {
 		utils.Logger.Warn("User Not found")
 		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid credentials", "")
 		return
 	}
 
-	if !utils.ComparePassword(user.Password, exists.Password) {
+	if !utils.ComparePassword(req.Password, user.Password) {
 		utils.Logger.Warn("Incorrect password")
-		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid Credentials", "")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid Password", "")
 		return
 	}
 
@@ -101,18 +104,23 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var member models.TeamMember
 
 	role := ""
-	err = memberCollection.FindOne(ctx, bson.M{"user": exists.ID.Hex()}).Decode(&member)
+	err = memberCollection.FindOne(ctx, bson.M{"user": user.ID.Hex()}).Decode(&member)
 	if err == nil {
 		role = member.Role
 	}
 
-	token, err := utils.GenerateJWT(exists.ID.Hex(), exists.Email, role)
+	token, err := utils.GenerateJWT(user.ID.Hex(), user.Email, role)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to login", "")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]string{"token": token})
+	utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]interface{}{"token": token, "user": map[string]interface{}{
+            "id":       user.ID.Hex(),
+            "email":    user.Email,
+            "fullname": user.FullName,
+            "role":     role,
+        },})
 
 }
 
