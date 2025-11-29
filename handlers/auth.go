@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -27,7 +26,6 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	fmt.Println(req)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.Logger.Warn("Invalid SJon")
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON format", "")
@@ -49,7 +47,6 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		Teams:     []primitive.ObjectID{},
 	}
-fmt.Println(newUser)
 	collection := database.DB.Collection("users")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -72,8 +69,8 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct{
-		Email string `json:"email"`
+	var req struct {
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -116,38 +113,35 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, "Login Successfull", map[string]interface{}{"token": token, "user": map[string]interface{}{
-            "id":       user.ID.Hex(),
-            "email":    user.Email,
-            "fullname": user.FullName,
-            "role":     role,
-        },})
+		"id":       user.ID.Hex(),
+		"email":    user.Email,
+		"fullname": user.FullName,
+		"role":     role,
+	}})
 
 }
 
-
-func Profile(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodGet{
+func Profile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Only Get Allowed", "")
 		return
 	}
 
 	userID, err := utils.GetUserID(r)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "",)
+		utils.RespondWithError(w, http.StatusUnauthorized, "Missing User ID", "")
 		return
 	}
 
 	userCollection := database.DB.Collection("users")
 	var user models.User
 
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-
 	err = userCollection.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
 	if err != nil {
-		if err == mongo.ErrNoDocuments{
+		if err == mongo.ErrNoDocuments {
 			utils.RespondWithError(w, http.StatusNotFound, "User not found", "")
 		} else {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Error finding user", "")
