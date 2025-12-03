@@ -598,7 +598,7 @@ func ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		teamIDStr,
 		"",
@@ -759,7 +759,7 @@ func RemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		teamIDStr,
 		"",

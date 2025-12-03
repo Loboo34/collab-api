@@ -82,13 +82,13 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$addToSet": bson.M{"projects": project.ID}})
+	_, err = teamCollection.UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$addToSet": bson.M{"projects": project.ID.Hex()}})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error Adding project to teams", "")
 		return
 	}
 
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		teamIDStr,
 		project.ID.Hex(),
@@ -169,7 +169,7 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		"",
 		projectIDStr,
@@ -250,14 +250,14 @@ func DeleteProject(w http.ResponseWriter, r *http.Request) {
 	_, err = teamCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": project.TeamId},
-		bson.M{"$pull": bson.M{"projects": projectID}},
+		bson.M{"$pull": bson.M{"projects": projectIDStr}},
 	)
 	if err != nil {
 		utils.Logger.Warn("Failed to update team's projects array")
 		return
 	}
 
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		"",
 		projectIDStr,
@@ -408,14 +408,7 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taskCollection := database.DB.Collection("tasks")
-	var task models.Task
-
-	err = taskCollection.FindOne(ctx, bson.M{"_id": projectID}).Decode(&task)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching task", "")
-		return
-	}
+	
 
 	utils.Logger.Info("Project fetched successfullyt")
 	utils.RespondWithJSON(w, http.StatusOK, "Task fetched", map[string]interface{}{"project": project})

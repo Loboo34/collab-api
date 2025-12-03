@@ -107,7 +107,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-		utils.Log(r.Context(),
+		utils.Log(
 		userID,
 		"",
 		"",
@@ -213,7 +213,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-		utils.Log(r.Context(),
+		utils.Log(
 		userID,
 		"",
 		"",
@@ -306,7 +306,7 @@ func AssignTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-		utils.Log(r.Context(),
+		utils.Log(
 		userID,
 		"",
 		"",
@@ -411,7 +411,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
 		return
 	}
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		"",
 		"",
@@ -485,7 +485,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "Error finding task", "")
 		return
 	}
-	utils.Log(r.Context(),
+	utils.Log(
 		userID,
 		"",
 		"",
